@@ -1,0 +1,39 @@
+#
+# Kconfig for Nurse_Call_SpO2 combined application
+#
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu
+
+module = COAP_CLIENT
+module-str = CoAP client
+source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
+
+module = COAP_CLIENT_UTILS
+module-str = CoAP client utilities
+source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
+
+module = BLE_UTILS
+module-str = Bluetooth connection utilities
+source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
+
+config USE_ADC_SENSOR
+    bool "Enable ADC Readings"
+    default y
+
+config USE_MOTION_SENSOR
+    bool "Enable Motion Sensor"
+    default n
+
+config USE_UART1_SENSOR
+    bool "Enable UART1 Sensor"
+    default n
+
+config DEVICE_PREFIX
+    string "Device type prefix used in unique_id (e.g. NC_SP)"
+    default "NC_SP"
+
+config DEVICE_DEFAULT_PROFILE
+    string "Default profile/bed name stored in NVS on first boot"
+    default "E4A_%.8s"

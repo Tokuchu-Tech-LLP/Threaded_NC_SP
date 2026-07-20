@@ -1,0 +1,8 @@
+sample:
+  description: Nurse Call and SpO2 merged firmware application with Zephyr RTOS multithreading
+  name: nurse_call_spo2
+tests:
+  sample.nurse_call_spo2:
+    build_only: true
+    platform_allow: nrf52840dk_nrf52840
+    tags: thread openthread ble

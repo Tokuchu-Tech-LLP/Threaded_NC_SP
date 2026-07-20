@@ -1,0 +1,8 @@
+build/
+.cache/
+*.hex
+*.bin
+*.elf
+*.zip
+*.o
+*.a
