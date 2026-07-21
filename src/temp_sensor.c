@@ -71,13 +71,32 @@ void temp_start(void)
     float temp_kelvin = 1.0f / ((1.0f / T0_KELVIN) + (1.0f / BETA) * logf(r_therm / R0));
     float temp_c = temp_kelvin - 273.15f;
 
-    LOG_INF("Temperature sampled: ADC=%d, Vadc=%.3fV, Temp=%.2f C", adc_value, (double)v_adc, (double)temp_c);
+    int32_t v_mv = (int32_t)(v_adc * 1000.0f);
+    int32_t temp_c_x100 = (int32_t)(temp_c * 100.0f);
+    int32_t temp_whole = temp_c_x100 / 100;
+    int32_t temp_frac = temp_c_x100 % 100;
+    if (temp_frac < 0) {
+        temp_frac = -temp_frac;
+    }
+
+    if (temp_c < -10.0f || temp_c > 60.0f) {
+        LOG_WRN("Temperature out of hardware sanity range (-10 to 60 C): %ld.%02ld C — discarding",
+                (long)temp_whole, (long)temp_frac);
+        return;
+    }
+
+    LOG_INF("Temperature sampled: ADC=%d, Vadc=%ld.%03ldV, Temp=%ld.%02ld C",
+            adc_value,
+            (long)(v_mv / 1000),
+            (long)(v_mv % 1000),
+            (long)temp_whole,
+            (long)temp_frac);
 
     struct telemetry_msg msg = {
         .type = MSG_TYPE_TEMP,
         .timestamp = k_uptime_get()
     };
-    msg.data.temp.temp_c_x100 = (int16_t)(temp_c * 100.0f);
+    msg.data.temp.temp_c_x100 = (int16_t)temp_c_x100;
 
     app_post_telemetry(&msg);
 }
