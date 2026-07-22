@@ -4,6 +4,20 @@ Unified, multithreaded Zephyr RTOS firmware combining **Nurse Call Emergency Ale
 
 ---
 
+## 📚 Technical Documentation & Remediation Logs
+
+All architectural reviews, audit reports, and remediation change logs are maintained in the [`docs/`](docs/) directory, labeled by their exact creation timestamps (`DD_MM_YY_HHMM`):
+
+- 📋 [**Master Changes & Remediation Log**](docs/23_07_26_0243_FIRMWARE_CHANGES_AND_REMEDIATION.md) *(Created: 23-07-26 02:43)* — Complete file-by-file change log, issues resolved, how, and why.
+- 🏗️ [**Implementation Plan**](docs/22_07_26_2044_implementation_plan.md) *(Created: 22-07-26 20:44)* — Firmware touchlist and gating architecture strategy.
+- 📜 [**Parser Protocol Audit**](docs/22_07_26_2030_parser_analysis.md) *(Created: 22-07-26 20:30)* — Mobile app BLE write payload audit and stateless parser justification.
+- 🔍 [**BLE Notification Producer Audit**](docs/22_07_26_2022_ble_callsite_audit.md) *(Created: 22-07-26 20:22)* — Complete trace of all 9 BLE notification call sites in compiled sources.
+- ⚡ [**BLE Producer Analysis**](docs/22_07_26_2014_ble_producer_analysis.md) *(Created: 22-07-26 20:14)* — Architectural evaluation of thread-decoupled telemetry vs reference queueing.
+- 🛡️ [**Architectural Hardening Summary**](docs/22_07_26_0529_REMEDIATION_SUMMARY.md) *(Created: 22-07-26 05:29)* — Summary of CoAP ACK locks, NVS flash-first persistence, and alert queues.
+- 📖 [**Architectural Readme**](docs/22_07_26_0529_ARCHITECTURAL_README.md) *(Created: 22-07-26 05:29)* — Scope and thread dispatch architecture breakdown for Nurse Call + SpO2.
+
+---
+
 ## 📌 Project Overview
 
 This repository represents the merged, production-grade firmware uniting two distinct medical device applications:

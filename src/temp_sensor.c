@@ -33,7 +33,6 @@ static int get_temp_adc(uint8_t adc_port, uint8_t channel_id)
     int32_t sum = 0;
     int valid = 0;
 
-    k_mutex_lock(&adc_lock, K_FOREVER);
     adc_setup(adc_port, channel_id);
 
     for (int i = 0; i < SAMPLE_COUNT; i++) {
@@ -47,7 +46,6 @@ static int get_temp_adc(uint8_t adc_port, uint8_t channel_id)
         k_msleep(2);
     }
 
-    k_mutex_unlock(&adc_lock);
     return (valid == 0) ? 0 : (sum / valid);
 }
 
