@@ -32,11 +32,15 @@ struct telemetry_msg {
 };
 
 extern struct k_msgq telemetry_msgq;
+extern struct k_msgq alert_msgq;
 
 void app_threads_init(void);
 void app_post_telemetry(const struct telemetry_msg *msg);
 
 bool is_spo2_sampling_active(void);
 bool is_nurse_call_active(void);
+
+void app_notify_alert_ack_received(uint8_t alert_id, bool is_active, int64_t timestamp);
+void app_notify_alert_ack_failed(void);
 
 #endif /* APP_THREADS_H */

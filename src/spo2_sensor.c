@@ -202,9 +202,9 @@ void spo2_start(void)
     compute_dc_ac(red_buf, &red_dc, &red_ac);
     compute_dc_ac(ir_buf,  &ir_dc,  &ir_ac);
 
-    LOG_INF("RED DC=%.1f AC=%.1f | IR DC=%.1f AC=%.1f",
-            (double)red_dc, (double)red_ac,
-            (double)ir_dc,  (double)ir_ac);
+    LOG_INF("RED DC=%d AC=%d | IR DC=%d AC=%d",
+            (int)red_dc, (int)red_ac,
+            (int)ir_dc,  (int)ir_ac);
 
     if (red_ac > red_dc * 0.6f) {
         LOG_WRN("Signal unstable (AC too high), skipping");
@@ -216,11 +216,19 @@ void spo2_start(void)
         .timestamp = k_uptime_get()
     };
 
-    if (red_dc > 1000) {
-        LOG_INF("No finger detected (RED DC=%.1f)", (double)red_dc);
+    int32_t threshold = spo2_config_get_no_finger_threshold();
+    int32_t target_thresh = threshold > 0 ? threshold : 1000;
+
+    if (red_dc > target_thresh) {
+        LOG_INF("No finger detected (RED DC=%d > threshold=%d)", (int)red_dc, (int)target_thresh);
         msg.data.spo2.spo2 = 1000; /* 10.00 % */
         msg.data.spo2.heart_rate = 0;
         app_post_telemetry(&msg);
+        return;
+    }
+
+    if (red_dc < 50.0f || ir_dc < 50.0f) {
+        LOG_WRN("Photodiode DC level too low for ratio math (RED=%.1f, IR=%.1f)", (double)red_dc, (double)ir_dc);
         return;
     }
 
@@ -242,7 +250,9 @@ void spo2_start(void)
         hr = 0;
     }
 
-    LOG_INF("SpO2 calculated: R=%.4f SpO2=%d HR=%d", (double)R, intSpO2, hr);
+    int32_t r_x10000 = (int32_t)(R * 10000.0f);
+    LOG_INF("SpO2 calculated: R=%ld.%04ld SpO2=%d HR=%d",
+            (long)(r_x10000 / 10000), (long)labs(r_x10000 % 10000), intSpO2, hr);
 
     msg.data.spo2.spo2 = intSpO2;
     msg.data.spo2.heart_rate = hr;
