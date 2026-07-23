@@ -1,0 +1,21 @@
+/* Copyright (c) 2020 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+ / {
+
+
+buttons {
+	compatible = "gpio-keys";
+
+	button4: button_4 {
+		gpios = <&gpio1 10 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;  // 4th Button - for Motion Sensor PULL DOWN and ACTIVE HIGH
+		label = "Push button switch 4";
+	};
+
+};	
+
+
+
+};

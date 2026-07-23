@@ -1,0 +1,23 @@
+/* 
+ *
+ * created by Arun for merging NVS and FOTA
+ */
+
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		nvs_partition: partition@7e000 {
+			label = "nvs_partition";
+			reg = <0x0007e000 0x00002000>; // 8 KB
+		};
+	};
+};
+
+
+
+
+
