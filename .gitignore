@@ -15,6 +15,7 @@ SPNC_Debug
 
 # Ignore build and temp files
 build/
+build*/
 bin/
 out/
 
