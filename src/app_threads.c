@@ -11,6 +11,7 @@
 #include "config_parameter.h"
 #include "common_nvs.h"
 #include "tt_main.h"
+#include "common_button.h"
 
 LOG_MODULE_REGISTER(app_threads, LOG_LEVEL_INF);
 
@@ -233,19 +234,15 @@ static int process_telemetry_msg(const struct telemetry_msg *msg)
     }
 
     case MSG_TYPE_NURSE_CALL_ALERT:
-        snprintf(json_buf, sizeof(json_buf),
-            "{\"unique_id\":\"%s\",\"type\":\"NURSE_CALL_ALERT\",\"alert_id\":%d,\"state\":\"ACTIVE\"}",
-            unique_id, msg->data.alert.alert_id);
-        LOG_INF("TX Nurse Call Alert: %s", json_buf);
-        rc = send_data_to_OTBR((uint8_t *)json_buf, 0, 0);
+        LOG_INF("TX Nurse Call Alert via common_button");
+        common_button_handle_action(1, "Call");
+        rc = 0;
         break;
 
     case MSG_TYPE_NURSE_CALL_CANCEL:
-        snprintf(json_buf, sizeof(json_buf),
-            "{\"unique_id\":\"%s\",\"type\":\"NURSE_CALL_ALERT\",\"alert_id\":%d,\"state\":\"CANCELLED\"}",
-            unique_id, msg->data.alert.alert_id);
-        LOG_INF("TX Nurse Call Cancel: %s", json_buf);
-        rc = send_data_to_OTBR((uint8_t *)json_buf, 0, 0);
+        LOG_INF("TX Nurse Call Cancel via common_button");
+        common_button_handle_action(3, "Cancel");
+        rc = 0;
         break;
 
     default:
