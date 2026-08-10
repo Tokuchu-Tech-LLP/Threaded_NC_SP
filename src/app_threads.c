@@ -243,6 +243,19 @@ static int process_telemetry_msg(const struct telemetry_msg *msg)
         LOG_INF("TX Nurse Call Cancel via common_button");
         common_button_handle_action(3, "Cancel");
         rc = 0;
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"unique_id\":\"%s\",\"type\":\"NURSE_CALL_ALERT\",\"alert_id\":%d,\"state\":\"ACTIVE\"}",
+            unique_id, msg->data.alert.alert_id);
+        LOG_INF("TX Nurse Call Alert: %s", json_buf);
+        rc = send_data_to_OTBR((uint8_t *)json_buf, BLE_TYPE_BUT, 1);
+        break;
+
+    case MSG_TYPE_NURSE_CALL_CANCEL:
+        snprintf(json_buf, sizeof(json_buf),
+            "{\"unique_id\":\"%s\",\"type\":\"NURSE_CALL_ALERT\",\"alert_id\":%d,\"state\":\"CANCELLED\"}",
+            unique_id, msg->data.alert.alert_id);
+        LOG_INF("TX Nurse Call Cancel: %s", json_buf);
+        rc = send_data_to_OTBR((uint8_t *)json_buf, BLE_TYPE_BUT, 0);
         break;
 
     default:
@@ -414,3 +427,21 @@ void device_background_process(void)
         update_activity_timestamp();
     }
 }
+
+void send_typed_value_to_mobile(uint8_t type, int16_t value)
+{
+    uint8_t buf[4];
+
+    buf[0] = type;
+    buf[1] = 0x00;                 // reserved
+    buf[2] = value & 0xFF;         // LSB
+    buf[3] = (value >> 8) & 0xFF;  // MSB
+
+    int err = ble_utils_send(buf, sizeof(buf));
+    if (err) {
+        LOG_ERR("BLE binary send failed: %d", err);
+    } else {
+        LOG_INF("BLE binary sent: type=%d value=%d", type, value);
+    }
+}
+
