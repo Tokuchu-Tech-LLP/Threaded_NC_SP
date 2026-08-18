@@ -1,8 +1,43 @@
-build/
-.cache/
+# Ignore full NC_Basic and NC_Log folders
+SPNC_FOTA/
+SPNC_Debug
+
+# But DO NOT ignore their releases folders
+!SpO2_Probe/releases/
+
+
+# Allow hex files only in releases
+!SpO2_Probe/releases/*.hex
+
+
+# Ignore all other hex files everywhere
 *.hex
-*.bin
+
+# Ignore build and temp files
+build/
+bin/
+out/
+
 *.elf
-*.zip
 *.o
-*.a
+*.exe
+*.log
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# VS Code and IDEs
+.vscode/
+
+# Local environment/helper scripts
+run_with_ncs.sh
+
+# Temporary and swap files
+*.swp
+*.swo
+*~
+.DS_Store
+
+
+
