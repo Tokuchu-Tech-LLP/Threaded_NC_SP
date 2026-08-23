@@ -58,10 +58,10 @@ static const config_field_t spo2_fields[] = {
         .struct_offset = offsetof(struct spo2_config, spo2_scan_rate_s),
         .field_size = sizeof(((struct spo2_config *)0)->spo2_scan_rate_s),
         .min_val = 1,
-        .max_val = 3600,
+        .max_val = 9999,
         .unit = "sec",
         .select_options = NULL,
-        .description = "Sampling interval in seconds",
+        .description = "Sampling interval in seconds (9999 to disable)",
         .custom_validate = NULL
     },
     {
@@ -71,10 +71,10 @@ static const config_field_t spo2_fields[] = {
         .struct_offset = offsetof(struct spo2_config, body_temp_scan_rate_s),
         .field_size = sizeof(((struct spo2_config *)0)->body_temp_scan_rate_s),
         .min_val = 1,
-        .max_val = 3600,
+        .max_val = 9999,
         .unit = "sec",
         .select_options = NULL,
-        .description = "Sampling interval in seconds",
+        .description = "Sampling interval in seconds (9999 to disable)",
         .custom_validate = NULL
     }
 };

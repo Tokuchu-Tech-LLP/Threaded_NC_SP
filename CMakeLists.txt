@@ -12,7 +12,6 @@ target_sources(app PRIVATE
     src/app_threads.c
     src/spo2_sensor.c
     src/temp_sensor.c
-    src/nurse_call_app.c
     ../TT_common/adc_utils.c
 )
 # NORDIC SDK APP END

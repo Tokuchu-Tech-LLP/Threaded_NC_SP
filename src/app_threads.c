@@ -7,7 +7,6 @@
 #include "app_threads.h"
 #include "spo2_sensor.h"
 #include "temp_sensor.h"
-#include "nurse_call_app.h"
 #include "config_parameter.h"
 #include "common_nvs.h"
 #include "tt_main.h"
@@ -186,18 +185,15 @@ static void temp_thread_entry(void *p1, void *p2, void *p3)
 }
 
 /* =========================================================
- * Thread 3: Nurse Call Event & Alert Processing Thread
+ * Thread 3: Nurse Call Event Processing Thread (Idle / Workqueue driven)
  * ========================================================= */
 static void nurse_call_thread_entry(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
-    printk("Nurse Call event thread started");
-
-    nurse_call_init();
+    printk("Nurse Call event thread started (workqueue driven)");
 
     while (1) {
-        nurse_call_process_loop();
-        k_msleep(100);
+        k_msleep(1000);
     }
 }
 
@@ -235,14 +231,14 @@ static int process_telemetry_msg(const struct telemetry_msg *msg)
     }
 
     case MSG_TYPE_NURSE_CALL_ALERT:
-        LOG_INF("TX Nurse Call Alert via common_button");
-        common_button_handle_action(1, "Call");
+        LOG_INF("TX Nurse Call Alert via common_nurse_call_send");
+        common_nurse_call_send(true, msg->data.alert.alert_id);
         rc = 0;
         break;
 
     case MSG_TYPE_NURSE_CALL_CANCEL:
-        LOG_INF("TX Nurse Call Cancel via common_button");
-        common_button_handle_action(3, "Cancel");
+        LOG_INF("TX Nurse Call Cancel via common_nurse_call_send");
+        common_nurse_call_send(false, msg->data.alert.alert_id);
         rc = 0;
         break;
 
@@ -369,39 +365,64 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
 /* =========================================================
  * Application Lifecycle Initialization & Background Monitor
  * ========================================================= */
+#define SENSOR_DISABLED_SCAN_RATE 9999
+
 void device_app_init(void)
 {
     printk("Initializing Nurse Call + SpO2 Application Multithreading");
 
-    /* Create SpO2 Thread */
-    k_thread_create(&spo2_thread_data, spo2_stack_area,
-                    K_THREAD_STACK_SIZEOF(spo2_stack_area),
-                    spo2_thread_entry, NULL, NULL, NULL,
-                    SPO2_THREAD_PRIO, 0, K_NO_WAIT);
-    k_thread_name_set(&spo2_thread_data, "spo2_thread");
+    /* Read configured sensor scan rates */
+    uint32_t spo2_scan_rate = common_config_get_spo2_scan_rate();
+    uint32_t temp_scan_rate = common_config_get_body_temp_scan_rate();
 
-    /* Create Temperature Thread */
-    k_thread_create(&temp_thread_data, temp_stack_area,
-                    K_THREAD_STACK_SIZEOF(temp_stack_area),
-                    temp_thread_entry, NULL, NULL, NULL,
-                    TEMP_THREAD_PRIO, 0, K_NO_WAIT);
-    k_thread_name_set(&temp_thread_data, "temp_thread");
+    bool spo2_enabled = (spo2_scan_rate > 0 && spo2_scan_rate != SENSOR_DISABLED_SCAN_RATE);
+    bool temp_enabled = (temp_scan_rate > 0 && temp_scan_rate != SENSOR_DISABLED_SCAN_RATE);
 
-    /* Create Nurse Call Thread */
+    printk("Application configuration:");
+    printk("  SpO2 scan rate = %u sec (%s)", spo2_scan_rate, spo2_enabled ? "ENABLED" : "DISABLED");
+    printk("  Temp scan rate = %u sec (%s)", temp_scan_rate, temp_enabled ? "ENABLED" : "DISABLED");
+
+    /* Create SpO2 Thread only when enabled */
+    if (spo2_enabled) {
+        k_thread_create(&spo2_thread_data, spo2_stack_area,
+                        K_THREAD_STACK_SIZEOF(spo2_stack_area),
+                        spo2_thread_entry, NULL, NULL, NULL,
+                        SPO2_THREAD_PRIO, 0, K_NO_WAIT);
+        k_thread_name_set(&spo2_thread_data, "spo2_thread");
+        printk("SpO2 thread CREATED");
+    } else {
+        printk("SpO2 thread NOT created (disabled by scan_rate=%u)", spo2_scan_rate);
+    }
+
+    /* Create Temperature Thread only when enabled */
+    if (temp_enabled) {
+        k_thread_create(&temp_thread_data, temp_stack_area,
+                        K_THREAD_STACK_SIZEOF(temp_stack_area),
+                        temp_thread_entry, NULL, NULL, NULL,
+                        TEMP_THREAD_PRIO, 0, K_NO_WAIT);
+        k_thread_name_set(&temp_thread_data, "temp_thread");
+        printk("Temperature thread CREATED");
+    } else {
+        printk("Temperature thread NOT created (disabled by scan_rate=%u)", temp_scan_rate);
+    }
+
+    /* Create Nurse Call Thread - ALWAYS required */
     k_thread_create(&nurse_call_thread_data, nurse_call_stack_area,
                     K_THREAD_STACK_SIZEOF(nurse_call_stack_area),
                     nurse_call_thread_entry, NULL, NULL, NULL,
                     NURSE_CALL_THREAD_PRIO, 0, K_NO_WAIT);
     k_thread_name_set(&nurse_call_thread_data, "nurse_call_thread");
+    printk("Nurse Call thread CREATED");
 
-    /* Create Telemetry TX Thread */
+    /* Create Telemetry TX Thread - ALWAYS required */
     k_thread_create(&telemetry_thread_data, telemetry_stack_area,
                     K_THREAD_STACK_SIZEOF(telemetry_stack_area),
                     telemetry_tx_thread_entry, NULL, NULL, NULL,
                     TELEMETRY_THREAD_PRIO, 0, K_NO_WAIT);
     k_thread_name_set(&telemetry_thread_data, "telemetry_tx_thread");
+    printk("Telemetry TX thread CREATED");
 
-    printk("All Nurse Call + SpO2 application threads spawned successfully");
+    printk("Application threads initialization complete");
 }
 
 void device_background_process(void)
