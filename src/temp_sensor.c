@@ -123,8 +123,9 @@ void temp_start(void)
    //     LOG_WRN("Temp out of normal human range");
    // }
 
-    if (temperature_x100 < 8000 || temperature_x100 > 11000) {
-        LOG_WRN("Temperature out of hardware sanity range (80 to 110 F) discarding");
+    if (temperature_x100 < 5000 || temperature_x100 > 11500) {
+        LOG_WRN("Temperature out of sensor hardware range (%ld.%02ld F) discarding",
+                (long)(temperature_x100 / 100), (long)labs(temperature_x100 % 100));
         return;
     }
 
