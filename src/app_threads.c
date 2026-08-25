@@ -285,16 +285,8 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
 
             bool is_active = (alert_msg.type == MSG_TYPE_NURSE_CALL_ALERT);
             if (rc == 0) {
-                if (!common_is_hospital()) {
-                    app_clear_pending_alert_if_matched(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
-                    retry_backoff_ms = 200;
-                } else {
-                    printk("CoAP alert request submitted — awaiting OTBR ACK response...");
-                    retry_backoff_ms = 200;
-                }
-            } else if (rc == -EBUSY) {
-                printk("CoAP request currently in flight — sleeping %u ms", retry_backoff_ms);
-                k_msleep(retry_backoff_ms);
+                app_clear_pending_alert_if_matched(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
+                retry_backoff_ms = 200;
             } else {
                 app_set_pending_alert_on_failure(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
                 LOG_ERR("Alert dispatch failed (err %d) — backing off %u ms", rc, retry_backoff_ms);
@@ -320,17 +312,8 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
             alert_processed = true;
 
             if (rc == 0) {
-                if (!common_is_hospital()) {
-                    app_clear_pending_alert_if_matched(pending_id, pending_is_active, pending_ts);
-                    retry_backoff_ms = 200;
-                } else {
-                    printk("CoAP alert retry submitted — awaiting OTBR ACK response...");
-                    k_msleep(retry_backoff_ms);
-                    retry_backoff_ms = MIN(retry_backoff_ms * 2, 3200);
-                }
-            } else if (rc == -EBUSY) {
-                printk("CoAP request currently in flight — sleeping %u ms", retry_backoff_ms);
-                k_msleep(retry_backoff_ms);
+                app_clear_pending_alert_if_matched(pending_id, pending_is_active, pending_ts);
+                retry_backoff_ms = 200;
             } else {
                 LOG_ERR("Alert retry dispatch failed (err %d) — backing off %u ms", rc, retry_backoff_ms);
                 k_msleep(retry_backoff_ms);
