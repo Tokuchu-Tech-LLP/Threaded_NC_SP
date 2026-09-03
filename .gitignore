@@ -41,3 +41,7 @@ run_with_ncs.sh
 
 
 
+
+# Backup files
+*.bak
+*~
