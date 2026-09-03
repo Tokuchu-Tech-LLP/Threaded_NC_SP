@@ -71,8 +71,8 @@ echo ""
 if [[ -t 0 ]]; then
     read -r -p "Enter release version [$CURRENT_VER]: " USER_INPUT
 else
-    # In non-interactive mode, use current version
-    USER_INPUT=""
+    # In piped or automated mode, read from stdin if available
+    read -r USER_INPUT || USER_INPUT=""
 fi
 
 RELEASE_VER="${USER_INPUT:-$CURRENT_VER}"
