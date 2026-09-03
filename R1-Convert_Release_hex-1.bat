@@ -14,7 +14,7 @@ REM ----------------------------------------------------------------------------
 REM 1. Git Safety Checks
 REM ------------------------------------------------------------------------------
 git rev-parse --is-inside-work-tree >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: Not inside a valid Git repository.
     echo Release aborted.
     pause
@@ -22,7 +22,7 @@ if %errorlevel% neq 0 (
 )
 
 git remote get-url origin >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: Git remote 'origin' not found.
     echo Release aborted.
     pause
@@ -92,7 +92,7 @@ REM ----------------------------------------------------------------------------
 set "TAG_NAME=stable-release-%RELEASE_VER%"
 
 git rev-parse -q --verify "refs/tags/%TAG_NAME%" >nul 2>&1
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     echo ERROR: Local Git tag '%TAG_NAME%' already exists.
     echo If a previous release partially succeeded or network dropped during confirmation, check:
     echo   git ls-remote --tags origin refs/tags/%TAG_NAME%
@@ -104,7 +104,7 @@ if %errorlevel% equ 0 (
 )
 
 git ls-remote --tags origin "refs/tags/%TAG_NAME%" 2>nul | findstr /c:"%TAG_NAME%" >nul
-if %errorlevel% equ 0 (
+if not errorlevel 1 (
     echo ERROR: Remote Git tag '%TAG_NAME%' already exists on origin.
     echo If the release already reached GitHub, advance '%VERSION_FILE%' to %NEXT_VER% for the next cycle.
     echo Release aborted.
@@ -188,7 +188,7 @@ if "%TS%"=="" call :get_fallback_ts
 set "RELEASE_DIR=Releases\v%RELEASE_VER%_%TS%"
 if not exist "%RELEASE_DIR%" (
     mkdir "%RELEASE_DIR%"
-    if %errorlevel% neq 0 (
+    if errorlevel 1 (
         echo ERROR: Failed to create release directory '%RELEASE_DIR%'.
         echo Release aborted.
         pause
@@ -198,7 +198,7 @@ if not exist "%RELEASE_DIR%" (
 
 echo Creating release directory: %RELEASE_DIR%\
 copy /b "!HEX_SRC!" "%RELEASE_DIR%\merged.hex" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: Failed to copy merged.hex into '%RELEASE_DIR%'.
     echo Release aborted.
     pause
@@ -206,7 +206,7 @@ if %errorlevel% neq 0 (
 )
 
 copy /b "!ZIP_SRC!" "%RELEASE_DIR%\dfu_application.zip" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: Failed to copy dfu_application.zip into '%RELEASE_DIR%'.
     echo Release aborted.
     pause
@@ -231,25 +231,25 @@ REM 8. Git Staging, Commit & Release Tag
 REM ------------------------------------------------------------------------------
 echo Staging release files in Git...
 git add "%VERSION_FILE%"
-if %errorlevel% neq 0 goto :git_add_failed
+if errorlevel 1 goto :git_add_failed
 
 git add .gitignore
-if %errorlevel% neq 0 goto :git_add_failed
+if errorlevel 1 goto :git_add_failed
 
 git add R1-Convert_Release_hex-1.sh
-if %errorlevel% neq 0 goto :git_add_failed
+if errorlevel 1 goto :git_add_failed
 
 git add R1-Convert_Release_hex-1.bat
-if %errorlevel% neq 0 goto :git_add_failed
+if errorlevel 1 goto :git_add_failed
 
 git add -f "%RELEASE_DIR%\merged.hex"
-if %errorlevel% neq 0 goto :git_add_failed
+if errorlevel 1 goto :git_add_failed
 
 git add -f "%RELEASE_DIR%\dfu_application.zip"
-if %errorlevel% neq 0 goto :git_add_failed
+if errorlevel 1 goto :git_add_failed
 
 git ls-files --error-unmatch "%VERSION_FILE%" >nul 2>&1
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: '%VERSION_FILE%' is not tracked or staged.
     pause
     exit /b 1
@@ -257,13 +257,13 @@ if %errorlevel% neq 0 (
 
 set "GIT_RELEASE_DIR=%RELEASE_DIR:\=/%"
 git diff --cached --name-only | findstr /x /c:"!GIT_RELEASE_DIR!/merged.hex" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: '!GIT_RELEASE_DIR!/merged.hex' is not staged.
     pause
     exit /b 1
 )
 git diff --cached --name-only | findstr /x /c:"!GIT_RELEASE_DIR!/dfu_application.zip" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: '!GIT_RELEASE_DIR!/dfu_application.zip' is not staged.
     pause
     exit /b 1
@@ -271,7 +271,7 @@ if %errorlevel% neq 0 (
 
 echo Creating release commit...
 git commit -m "release: version %RELEASE_VER%"
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: Git commit failed.
     pause
     exit /b 1
@@ -279,7 +279,7 @@ if %errorlevel% neq 0 (
 
 echo Creating annotated Git tag: %TAG_NAME%...
 git tag -a "%TAG_NAME%" -m "Release %TAG_NAME%"
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo ERROR: Failed to create Git tag '%TAG_NAME%'.
     pause
     exit /b 1
@@ -299,7 +299,7 @@ if "!TAG_COMMIT!"=="" (
 )
 
 git cat-file -e "!TAG_COMMIT!^{commit}" 2>nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo INTEGRITY ERROR: Resolved SHA '!TAG_COMMIT!' for tag '%TAG_NAME%' is not a valid commit object.
     pause
     exit /b 1
@@ -310,21 +310,21 @@ set "EXPECTED_HEX=!GIT_RELEASE_DIR!/merged.hex"
 set "EXPECTED_ZIP=!GIT_RELEASE_DIR!/dfu_application.zip"
 
 git ls-tree -r --name-only "!TAG_COMMIT!" -- "%GIT_VERSION_FILE%" | findstr /x /c:"%GIT_VERSION_FILE%" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo INTEGRITY ERROR: Exact file path '%GIT_VERSION_FILE%' is missing from release tag commit (!TAG_COMMIT!).
     pause
     exit /b 1
 )
 
 git ls-tree -r --name-only "!TAG_COMMIT!" -- "!EXPECTED_HEX!" | findstr /x /c:"!EXPECTED_HEX!" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo INTEGRITY ERROR: Exact artifact path '!EXPECTED_HEX!' is missing from release tag commit (!TAG_COMMIT!).
     pause
     exit /b 1
 )
 
 git ls-tree -r --name-only "!TAG_COMMIT!" -- "!EXPECTED_ZIP!" | findstr /x /c:"!EXPECTED_ZIP!" >nul
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo INTEGRITY ERROR: Exact artifact path '!EXPECTED_ZIP!' is missing from release tag commit (!TAG_COMMIT!).
     pause
     exit /b 1
@@ -339,7 +339,7 @@ echo Pushing release commit and tag to GitHub (origin)...
 for /f "tokens=*" %%B in ('git rev-parse --abbrev-ref HEAD') do set "CURRENT_BRANCH=%%B"
 
 git push origin %CURRENT_BRANCH%
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo.
     echo ERROR: Failed to push commit to origin/%CURRENT_BRANCH%.
     echo Push status could not be confirmed. Verify the remote branch before retrying:
@@ -351,7 +351,7 @@ if %errorlevel% neq 0 (
 )
 
 git push origin "%TAG_NAME%"
-if %errorlevel% neq 0 (
+if errorlevel 1 (
     echo.
     echo ERROR: Failed to push tag '%TAG_NAME%' to origin.
     echo Push status could not be confirmed. Verify the remote tag before retrying:
