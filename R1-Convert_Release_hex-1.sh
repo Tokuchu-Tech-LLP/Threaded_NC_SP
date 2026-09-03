@@ -73,6 +73,9 @@ TAG_NAME="stable-release-${RELEASE_VER}"
 
 if git rev-parse -q --verify "refs/tags/${TAG_NAME}" >/dev/null 2>&1; then
     echo "ERROR: Local Git tag '${TAG_NAME}' already exists."
+    echo "If a previous release partially succeeded or network dropped during confirmation, check:"
+    echo "  git ls-remote --tags origin refs/tags/${TAG_NAME}"
+    echo "To proceed with a new release cycle, advance '$VERSION_FILE' to $NEXT_VER."
     echo "Overwriting existing release tags is strictly prohibited."
     echo "Release aborted."
     exit 1
@@ -81,6 +84,7 @@ fi
 # Check remote tags if connected
 if git ls-remote --tags origin "refs/tags/${TAG_NAME}" 2>/dev/null | grep -q "${TAG_NAME}"; then
     echo "ERROR: Remote Git tag '${TAG_NAME}' already exists on origin."
+    echo "If the release already reached GitHub, advance '$VERSION_FILE' to $NEXT_VER for the next cycle."
     echo "Release aborted."
     exit 1
 fi
@@ -197,19 +201,48 @@ echo "Creating annotated Git tag: $TAG_NAME..."
 git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
 
 # ------------------------------------------------------------------------------
-# 9. Push to GitHub Remote
+# 9. Verify Tag Integrity (git ls-tree -r)
+# ------------------------------------------------------------------------------
+echo "Verifying release tag integrity (git ls-tree -r refs/tags/$TAG_NAME)..."
+TAG_COMMIT=$(git rev-list -n 1 "$TAG_NAME")
+TAG_FILES=$(git ls-tree -r --name-only "$TAG_COMMIT")
+
+if ! echo "$TAG_FILES" | grep -q "$VERSION_FILE"; then
+    echo "INTEGRITY ERROR: '$VERSION_FILE' is missing from release tag commit."
+    exit 1
+fi
+if ! echo "$TAG_FILES" | grep -q "$RELEASE_DIR/merged.hex"; then
+    echo "INTEGRITY ERROR: 'merged.hex' is missing from release tag commit."
+    exit 1
+fi
+if ! echo "$TAG_FILES" | grep -q "$RELEASE_DIR/dfu_application.zip"; then
+    echo "INTEGRITY ERROR: 'dfu_application.zip' is missing from release tag commit."
+    exit 1
+fi
+echo "Release tag integrity verified: exact source + firmware artifacts confirmed."
+
+# ------------------------------------------------------------------------------
+# 10. Push to GitHub Remote
 # ------------------------------------------------------------------------------
 echo "Pushing release commit and tag to GitHub (origin)..."
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 if ! git push origin "$CURRENT_BRANCH"; then
+    echo ""
     echo "ERROR: Failed to push commit to origin/$CURRENT_BRANCH."
-    echo "Release tag not pushed."
+    echo "Push status could not be confirmed. Verify the remote branch before retrying:"
+    echo "  git log origin/$CURRENT_BRANCH -n 1"
+    echo "  git ls-remote --tags origin refs/tags/$TAG_NAME"
+    echo "Release aborted. '$VERSION_FILE' was NOT modified and remains at $RELEASE_VER."
     exit 1
 fi
 
 if ! git push origin "$TAG_NAME"; then
+    echo ""
     echo "ERROR: Failed to push tag '$TAG_NAME' to origin."
+    echo "Push status could not be confirmed. Verify the remote tag before retrying:"
+    echo "  git ls-remote --tags origin refs/tags/$TAG_NAME"
+    echo "Release aborted. '$VERSION_FILE' was NOT modified and remains at $RELEASE_VER."
     exit 1
 fi
 

@@ -94,6 +94,9 @@ set "TAG_NAME=stable-release-%RELEASE_VER%"
 git rev-parse -q --verify "refs/tags/%TAG_NAME%" >nul 2>&1
 if %errorlevel% equ 0 (
     echo ERROR: Local Git tag '%TAG_NAME%' already exists.
+    echo If a previous release partially succeeded or network dropped during confirmation, check:
+    echo   git ls-remote --tags origin refs/tags/%TAG_NAME%
+    echo To proceed with a new release cycle, advance '%VERSION_FILE%' to %NEXT_VER%.
     echo Overwriting existing release tags is strictly prohibited.
     echo Release aborted.
     pause
@@ -221,22 +224,57 @@ if %errorlevel% neq 0 (
 )
 
 REM ------------------------------------------------------------------------------
-REM 9. Push to GitHub Remote
+REM 9. Verify Tag Integrity (git ls-tree -r)
+REM ------------------------------------------------------------------------------
+echo Verifying release tag integrity (git ls-tree -r refs/tags/%TAG_NAME%)...
+set "TAG_COMMIT="
+for /f "tokens=*" %%C in ('git rev-list -n 1 "%TAG_NAME%"') do set "TAG_COMMIT=%%C"
+
+git ls-tree -r --name-only "%TAG_COMMIT%" | findstr /c:"%VERSION_FILE%" >nul
+if %errorlevel% neq 0 (
+    echo INTEGRITY ERROR: '%VERSION_FILE%' is missing from release tag commit.
+    pause
+    exit /b 1
+)
+git ls-tree -r --name-only "%TAG_COMMIT%" | findstr /c:"merged.hex" >nul
+if %errorlevel% neq 0 (
+    echo INTEGRITY ERROR: 'merged.hex' is missing from release tag commit.
+    pause
+    exit /b 1
+)
+git ls-tree -r --name-only "%TAG_COMMIT%" | findstr /c:"dfu_application.zip" >nul
+if %errorlevel% neq 0 (
+    echo INTEGRITY ERROR: 'dfu_application.zip' is missing from release tag commit.
+    pause
+    exit /b 1
+)
+echo Release tag integrity verified: exact source + firmware artifacts confirmed.
+
+REM ------------------------------------------------------------------------------
+REM 10. Push to GitHub Remote
 REM ------------------------------------------------------------------------------
 echo Pushing release commit and tag to GitHub (origin)...
 for /f "tokens=*" %%B in ('git rev-parse --abbrev-ref HEAD') do set "CURRENT_BRANCH=%%B"
 
 git push origin %CURRENT_BRANCH%
 if %errorlevel% neq 0 (
+    echo.
     echo ERROR: Failed to push commit to origin/%CURRENT_BRANCH%.
-    echo Release tag not pushed.
+    echo Push status could not be confirmed. Verify the remote branch before retrying:
+    echo   git log origin/%CURRENT_BRANCH% -n 1
+    echo   git ls-remote --tags origin refs/tags/%TAG_NAME%
+    echo Release aborted. '%VERSION_FILE%' was NOT modified and remains at %RELEASE_VER%.
     pause
     exit /b 1
 )
 
 git push origin "%TAG_NAME%"
 if %errorlevel% neq 0 (
+    echo.
     echo ERROR: Failed to push tag '%TAG_NAME%' to origin.
+    echo Push status could not be confirmed. Verify the remote tag before retrying:
+    echo   git ls-remote --tags origin refs/tags/%TAG_NAME%
+    echo Release aborted. '%VERSION_FILE%' was NOT modified and remains at %RELEASE_VER%.
     pause
     exit /b 1
 )
