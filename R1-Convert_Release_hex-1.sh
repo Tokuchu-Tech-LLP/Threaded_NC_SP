@@ -54,53 +54,17 @@ if [[ ! "$CURRENT_VER" =~ ^[0-9]+\.[0-9]+$ ]]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Calculate Suggested Next Version (Major.(Patch + 1))
+# 3. Determine Release Version & Calculate Next Version
 # ------------------------------------------------------------------------------
+RELEASE_VER="$CURRENT_VER"
 MAJOR="${CURRENT_VER%%.*}"
 PATCH="${CURRENT_VER##*.}"
 NEXT_PATCH=$((PATCH + 1))
-SUGGESTED_VER="${MAJOR}.${NEXT_PATCH}"
+NEXT_VER="${MAJOR}.${NEXT_PATCH}"
 
-echo "Current version:        $CURRENT_VER"
-echo "Suggested next version: $SUGGESTED_VER"
+echo "Releasing firmware version: $RELEASE_VER"
+echo "Next development version:   $NEXT_VER (will be set after release completes)"
 echo ""
-
-# ------------------------------------------------------------------------------
-# 4. Prompt Developer for Release Version (Default is Current Version)
-# ------------------------------------------------------------------------------
-if [[ -t 0 ]]; then
-    read -r -p "Enter release version [$CURRENT_VER]: " USER_INPUT
-else
-    # In piped or automated mode, read from stdin if available
-    read -r USER_INPUT || USER_INPUT=""
-fi
-
-RELEASE_VER="${USER_INPUT:-$CURRENT_VER}"
-
-# Validate chosen version format
-if [[ ! "$RELEASE_VER" =~ ^[0-9]+\.[0-9]+$ ]]; then
-    echo "ERROR: Chosen release version '$RELEASE_VER' is invalid. Must be Major.Patch (e.g. 1.2)."
-    echo "Release aborted."
-    exit 1
-fi
-
-# If user specified a different version than in app_version.h, update app_version.h
-if [[ "$RELEASE_VER" != "$CURRENT_VER" ]]; then
-    NEW_MAJOR="${RELEASE_VER%%.*}"
-    NEW_PATCH="${RELEASE_VER##*.}"
-    cat <<EOF > "$VERSION_FILE"
-#ifndef APP_VERSION_H
-#define APP_VERSION_H
-
-#define APP_VERSION_MAJOR $NEW_MAJOR
-#define APP_VERSION_PATCH $NEW_PATCH
-#define APP_VERSION_STR   "$RELEASE_VER"
-
-#endif /* APP_VERSION_H */
-EOF
-    echo "NOTE: Updated '$VERSION_FILE' to version $RELEASE_VER."
-    echo "WARNING: Ensure the compiled firmware artifacts correspond to this version."
-fi
 
 # ------------------------------------------------------------------------------
 # 5. Check if Target Git Tag Already Exists
@@ -249,16 +213,37 @@ if ! git push origin "$TAG_NAME"; then
 fi
 
 # ------------------------------------------------------------------------------
-# 10. Success Summary (app_version.h is NOT modified after release)
+# 10. Advance to Next Development Version
+# ------------------------------------------------------------------------------
+echo ""
+echo "Advancing '$VERSION_FILE' to $NEXT_VER for next development cycle..."
+cat <<EOF > "$VERSION_FILE"
+#ifndef APP_VERSION_H
+#define APP_VERSION_H
+
+#define APP_VERSION_MAJOR $MAJOR
+#define APP_VERSION_PATCH $NEXT_PATCH
+#define APP_VERSION_STR   "$NEXT_VER"
+
+#endif /* APP_VERSION_H */
+EOF
+
+git add "$VERSION_FILE"
+git commit -m "chore: start next version $NEXT_VER"
+if ! git push origin "$CURRENT_BRANCH"; then
+    echo "WARNING: Successfully released $TAG_NAME, but failed to push version bump to origin/$CURRENT_BRANCH."
+fi
+
+# ------------------------------------------------------------------------------
+# 11. Success Summary
 # ------------------------------------------------------------------------------
 echo ""
 echo "=================================================="
 echo " Release $TAG_NAME Completed Successfully!"
 echo "=================================================="
-echo "Firmware Version:   $RELEASE_VER"
+echo "Firmware Released:  $RELEASE_VER"
 echo "Release Directory:  $RELEASE_DIR/"
 echo "Release Artifacts:  merged.hex, dfu_application.zip"
-echo "Git Commit SHA:     $(git rev-parse --short HEAD)"
-echo "Git Tag:            $TAG_NAME"
-echo "Remote Push:        origin/$CURRENT_BRANCH + $TAG_NAME"
+echo "Git Release Tag:    $TAG_NAME"
+echo "Next Version Set:   $NEXT_VER in $VERSION_FILE"
 echo "=================================================="

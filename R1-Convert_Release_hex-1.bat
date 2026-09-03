@@ -74,61 +74,17 @@ if defined CURRENT_VER_INVALID (
 )
 
 REM ------------------------------------------------------------------------------
-REM 3. Calculate Suggested Next Version (Major.(Patch + 1))
+REM 3. Determine Release Version & Calculate Next Version
 REM ------------------------------------------------------------------------------
+set "RELEASE_VER=%CURRENT_VER%"
 set "MAJOR=%PART1%"
 set "PATCH=%PART2%"
 set /a NEXT_PATCH=PATCH+1
-set "SUGGESTED_VER=%MAJOR%.%NEXT_PATCH%"
+set "NEXT_VER=%MAJOR%.%NEXT_PATCH%"
 
-echo Current version:        %CURRENT_VER%
-echo Suggested next version: %SUGGESTED_VER%
+echo Releasing firmware version: %RELEASE_VER%
+echo Next development version:   %NEXT_VER% (will be set after release completes)
 echo.
-
-REM ------------------------------------------------------------------------------
-REM 4. Prompt Developer for Release Version (Default is Current Version)
-REM ------------------------------------------------------------------------------
-set "USER_INPUT="
-set /p "USER_INPUT=Enter release version [%CURRENT_VER%]: "
-if "%USER_INPUT%"=="" set "USER_INPUT=%CURRENT_VER%"
-set "RELEASE_VER=%USER_INPUT%"
-
-REM Validate chosen version format
-set "VAL_P1="
-set "VAL_P2="
-set "VAL_EXTRA="
-for /f "tokens=1,2,3 delims=." %%A in ("%RELEASE_VER%") do (
-    set "VAL_P1=%%A"
-    set "VAL_P2=%%B"
-    set "VAL_EXTRA=%%C"
-)
-
-if not "%VAL_EXTRA%"=="" set "CHOSEN_VER_INVALID=1"
-if "%VAL_P1%"=="" set "CHOSEN_VER_INVALID=1"
-if "%VAL_P2%"=="" set "CHOSEN_VER_INVALID=1"
-
-if defined CHOSEN_VER_INVALID (
-    echo ERROR: Chosen release version '%RELEASE_VER%' is invalid. Must be Major.Patch (e.g. 1.2).
-    echo Release aborted.
-    pause
-    exit /b 1
-)
-
-REM If user specified a different version than in app_version.h, update app_version.h
-if not "%RELEASE_VER%"=="%CURRENT_VER%" (
-    (
-        echo #ifndef APP_VERSION_H
-        echo #define APP_VERSION_H
-        echo.
-        echo #define APP_VERSION_MAJOR !VAL_P1!
-        echo #define APP_VERSION_PATCH !VAL_P2!
-        echo #define APP_VERSION_STR   "!RELEASE_VER!"
-        echo.
-        echo #endif /* APP_VERSION_H */
-    ) > "%VERSION_FILE%"
-    echo NOTE: Updated '%VERSION_FILE%' to version !RELEASE_VER!.
-    echo WARNING: Ensure the compiled firmware artifacts correspond to this version.
-)
 
 REM ------------------------------------------------------------------------------
 REM 5. Check if Target Git Tag Already Exists
@@ -269,17 +225,40 @@ if %errorlevel% neq 0 (
 )
 
 REM ------------------------------------------------------------------------------
-REM 10. Success Summary (app_version.h is NOT modified after release)
+REM 10. Advance to Next Development Version
+REM ------------------------------------------------------------------------------
+echo.
+echo Advancing '%VERSION_FILE%' to %NEXT_VER% for next development cycle...
+(
+    echo #ifndef APP_VERSION_H
+    echo #define APP_VERSION_H
+    echo.
+    echo #define APP_VERSION_MAJOR %MAJOR%
+    echo #define APP_VERSION_PATCH %NEXT_PATCH%
+    echo #define APP_VERSION_STR   "%NEXT_VER%"
+    echo.
+    echo #endif /* APP_VERSION_H */
+) > "%VERSION_FILE%"
+
+git add "%VERSION_FILE%"
+git commit -m "chore: start next version %NEXT_VER%"
+git push origin %CURRENT_BRANCH%
+if %errorlevel% neq 0 (
+    echo WARNING: Successfully released %TAG_NAME%, but failed to push version bump to origin/%CURRENT_BRANCH%.
+)
+
+REM ------------------------------------------------------------------------------
+REM 11. Success Summary
 REM ------------------------------------------------------------------------------
 echo.
 echo ==================================================
 echo  Release %TAG_NAME% Completed Successfully!
 echo ==================================================
-echo Firmware Version:   %RELEASE_VER%
+echo Firmware Released:  %RELEASE_VER%
 echo Release Directory:  %RELEASE_DIR%\
 echo Release Artifacts:  merged.hex, dfu_application.zip
-echo Git Tag:            %TAG_NAME%
-echo Remote Push:        origin/%CURRENT_BRANCH% + %TAG_NAME%
+echo Git Release Tag:    %TAG_NAME%
+echo Next Version Set:   %NEXT_VER% in %VERSION_FILE%
 echo ==================================================
 
 pause
