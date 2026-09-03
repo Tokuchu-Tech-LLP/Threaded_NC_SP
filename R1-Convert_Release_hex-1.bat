@@ -186,20 +186,41 @@ for /f %%A in ('powershell -NoProfile -Command "Get-Date -Format 'dd-MMM-yyyy-HH
 if "%TS%"=="" call :get_fallback_ts
 
 set "RELEASE_DIR=Releases\v%RELEASE_VER%_%TS%"
-if not exist "%RELEASE_DIR%" mkdir "%RELEASE_DIR%"
+if not exist "%RELEASE_DIR%" (
+    mkdir "%RELEASE_DIR%"
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to create release directory '%RELEASE_DIR%'.
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
+)
 
 echo Creating release directory: %RELEASE_DIR%\
 copy /b "!HEX_SRC!" "%RELEASE_DIR%\merged.hex" >nul
-copy /b "!ZIP_SRC!" "%RELEASE_DIR%\dfu_application.zip" >nul
-
-if not exist "%RELEASE_DIR%\merged.hex" (
+if %errorlevel% neq 0 (
     echo ERROR: Failed to copy merged.hex into '%RELEASE_DIR%'.
     echo Release aborted.
     pause
     exit /b 1
 )
-if not exist "%RELEASE_DIR%\dfu_application.zip" (
+
+copy /b "!ZIP_SRC!" "%RELEASE_DIR%\dfu_application.zip" >nul
+if %errorlevel% neq 0 (
     echo ERROR: Failed to copy dfu_application.zip into '%RELEASE_DIR%'.
+    echo Release aborted.
+    pause
+    exit /b 1
+)
+
+if not exist "%RELEASE_DIR%\merged.hex" (
+    echo ERROR: Target artifact '%RELEASE_DIR%\merged.hex' not found after copy.
+    echo Release aborted.
+    pause
+    exit /b 1
+)
+if not exist "%RELEASE_DIR%\dfu_application.zip" (
+    echo ERROR: Target artifact '%RELEASE_DIR%\dfu_application.zip' not found after copy.
     echo Release aborted.
     pause
     exit /b 1
@@ -210,11 +231,22 @@ REM 8. Git Staging, Commit & Release Tag
 REM ------------------------------------------------------------------------------
 echo Staging release files in Git...
 git add "%VERSION_FILE%"
+if %errorlevel% neq 0 goto :git_add_failed
+
 git add .gitignore
+if %errorlevel% neq 0 goto :git_add_failed
+
 git add R1-Convert_Release_hex-1.sh
+if %errorlevel% neq 0 goto :git_add_failed
+
 git add R1-Convert_Release_hex-1.bat
+if %errorlevel% neq 0 goto :git_add_failed
+
 git add -f "%RELEASE_DIR%\merged.hex"
+if %errorlevel% neq 0 goto :git_add_failed
+
 git add -f "%RELEASE_DIR%\dfu_application.zip"
+if %errorlevel% neq 0 goto :git_add_failed
 
 git ls-files --error-unmatch "%VERSION_FILE%" >nul 2>&1
 if %errorlevel% neq 0 (
@@ -388,6 +420,15 @@ echo ==================================================
 
 pause
 exit /b 0
+
+REM ==============================================================================
+REM Error Handler: Git Staging Failure
+REM ==============================================================================
+:git_add_failed
+echo ERROR: Failed to stage release files in Git.
+echo Release aborted.
+pause
+exit /b 1
 
 REM ==============================================================================
 REM Subroutine: Fallback Timestamp Generator

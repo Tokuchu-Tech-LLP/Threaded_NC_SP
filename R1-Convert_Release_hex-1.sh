@@ -155,14 +155,32 @@ echo "  ZIP: $ZIP_SRC ($(du -h "$ZIP_SRC" | cut -f1))"
 TIMESTAMP=$(date +"%d-%b-%Y-%H-%M")
 RELEASE_DIR="Releases/v${RELEASE_VER}_${TIMESTAMP}"
 
-mkdir -p "$RELEASE_DIR"
+if ! mkdir -p "$RELEASE_DIR"; then
+    echo "ERROR: Failed to create release directory '$RELEASE_DIR'."
+    echo "Release aborted."
+    exit 1
+fi
 
 echo "Creating release directory: $RELEASE_DIR/"
-cp "$HEX_SRC" "$RELEASE_DIR/merged.hex"
-cp "$ZIP_SRC" "$RELEASE_DIR/dfu_application.zip"
+if ! cp "$HEX_SRC" "$RELEASE_DIR/merged.hex"; then
+    echo "ERROR: Failed to copy merged.hex into '$RELEASE_DIR'."
+    echo "Release aborted."
+    exit 1
+fi
 
-if [[ ! -f "$RELEASE_DIR/merged.hex" || ! -f "$RELEASE_DIR/dfu_application.zip" ]]; then
-    echo "ERROR: Failed to copy release artifacts into '$RELEASE_DIR'."
+if ! cp "$ZIP_SRC" "$RELEASE_DIR/dfu_application.zip"; then
+    echo "ERROR: Failed to copy dfu_application.zip into '$RELEASE_DIR'."
+    echo "Release aborted."
+    exit 1
+fi
+
+if [[ ! -f "$RELEASE_DIR/merged.hex" ]]; then
+    echo "ERROR: Target artifact '$RELEASE_DIR/merged.hex' not found after copy."
+    echo "Release aborted."
+    exit 1
+fi
+if [[ ! -f "$RELEASE_DIR/dfu_application.zip" ]]; then
+    echo "ERROR: Target artifact '$RELEASE_DIR/dfu_application.zip' not found after copy."
     echo "Release aborted."
     exit 1
 fi
@@ -171,12 +189,12 @@ fi
 # 8. Git Staging, Commit & Release Tag
 # ------------------------------------------------------------------------------
 echo "Staging release files in Git..."
-git add "$VERSION_FILE"
-git add .gitignore
-git add R1-Convert_Release_hex-1.sh
-git add R1-Convert_Release_hex-1.bat
-git add -f "$RELEASE_DIR/merged.hex"
-git add -f "$RELEASE_DIR/dfu_application.zip"
+git add "$VERSION_FILE" || { echo "ERROR: Failed to stage '$VERSION_FILE'."; echo "Release aborted."; exit 1; }
+git add .gitignore || { echo "ERROR: Failed to stage '.gitignore'."; echo "Release aborted."; exit 1; }
+git add R1-Convert_Release_hex-1.sh || { echo "ERROR: Failed to stage 'R1-Convert_Release_hex-1.sh'."; echo "Release aborted."; exit 1; }
+git add R1-Convert_Release_hex-1.bat || { echo "ERROR: Failed to stage 'R1-Convert_Release_hex-1.bat'."; echo "Release aborted."; exit 1; }
+git add -f "$RELEASE_DIR/merged.hex" || { echo "ERROR: Failed to stage '$RELEASE_DIR/merged.hex'."; echo "Release aborted."; exit 1; }
+git add -f "$RELEASE_DIR/dfu_application.zip" || { echo "ERROR: Failed to stage '$RELEASE_DIR/dfu_application.zip'."; echo "Release aborted."; exit 1; }
 
 # Verify expected files are staged
 if ! git ls-files --error-unmatch "$VERSION_FILE" >/dev/null 2>&1; then
