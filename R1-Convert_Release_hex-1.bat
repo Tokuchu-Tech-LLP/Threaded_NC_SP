@@ -225,10 +225,10 @@ if %errorlevel% neq 0 (
 )
 
 REM ------------------------------------------------------------------------------
-REM 10. Advance to Next Development Version
+REM 10. Advance to Next Development Version (Local Only)
 REM ------------------------------------------------------------------------------
 echo.
-echo Advancing '%VERSION_FILE%' to %NEXT_VER% for next development cycle...
+echo Advancing '%VERSION_FILE%' locally to %NEXT_VER% for next development cycle...
 (
     echo #ifndef APP_VERSION_H
     echo #define APP_VERSION_H
@@ -239,13 +239,6 @@ echo Advancing '%VERSION_FILE%' to %NEXT_VER% for next development cycle...
     echo.
     echo #endif /* APP_VERSION_H */
 ) > "%VERSION_FILE%"
-
-git add "%VERSION_FILE%"
-git commit -m "chore: start next version %NEXT_VER%"
-git push origin %CURRENT_BRANCH%
-if %errorlevel% neq 0 (
-    echo WARNING: Successfully released %TAG_NAME%, but failed to push version bump to origin/%CURRENT_BRANCH%.
-)
 
 REM ------------------------------------------------------------------------------
 REM 11. Success Summary
@@ -258,7 +251,7 @@ echo Firmware Released:  %RELEASE_VER%
 echo Release Directory:  %RELEASE_DIR%\
 echo Release Artifacts:  merged.hex, dfu_application.zip
 echo Git Release Tag:    %TAG_NAME%
-echo Next Version Set:   %NEXT_VER% in %VERSION_FILE%
+echo Next Version Set:   %NEXT_VER% in %VERSION_FILE% (local only)
 echo ==================================================
 
 pause

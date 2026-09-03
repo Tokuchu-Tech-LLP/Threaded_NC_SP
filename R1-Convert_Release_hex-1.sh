@@ -175,11 +175,12 @@ git add -f "$RELEASE_DIR/merged.hex"
 git add -f "$RELEASE_DIR/dfu_application.zip"
 
 # Verify expected files are staged
-STAGED_FILES=$(git diff --cached --name-only)
-if ! echo "$STAGED_FILES" | grep -q "$VERSION_FILE"; then
-    echo "ERROR: '$VERSION_FILE' is not staged."
+if ! git ls-files --error-unmatch "$VERSION_FILE" >/dev/null 2>&1; then
+    echo "ERROR: '$VERSION_FILE' is not tracked or staged."
     exit 1
 fi
+
+STAGED_FILES=$(git diff --cached --name-only)
 if ! echo "$STAGED_FILES" | grep -q "$RELEASE_DIR/merged.hex"; then
     echo "ERROR: '$RELEASE_DIR/merged.hex' is not staged."
     exit 1
@@ -213,10 +214,10 @@ if ! git push origin "$TAG_NAME"; then
 fi
 
 # ------------------------------------------------------------------------------
-# 10. Advance to Next Development Version
+# 10. Advance to Next Development Version (Local Only)
 # ------------------------------------------------------------------------------
 echo ""
-echo "Advancing '$VERSION_FILE' to $NEXT_VER for next development cycle..."
+echo "Advancing '$VERSION_FILE' locally to $NEXT_VER for next development cycle..."
 cat <<EOF > "$VERSION_FILE"
 #ifndef APP_VERSION_H
 #define APP_VERSION_H
@@ -227,12 +228,6 @@ cat <<EOF > "$VERSION_FILE"
 
 #endif /* APP_VERSION_H */
 EOF
-
-git add "$VERSION_FILE"
-git commit -m "chore: start next version $NEXT_VER"
-if ! git push origin "$CURRENT_BRANCH"; then
-    echo "WARNING: Successfully released $TAG_NAME, but failed to push version bump to origin/$CURRENT_BRANCH."
-fi
 
 # ------------------------------------------------------------------------------
 # 11. Success Summary
@@ -245,5 +240,5 @@ echo "Firmware Released:  $RELEASE_VER"
 echo "Release Directory:  $RELEASE_DIR/"
 echo "Release Artifacts:  merged.hex, dfu_application.zip"
 echo "Git Release Tag:    $TAG_NAME"
-echo "Next Version Set:   $NEXT_VER in $VERSION_FILE"
+echo "Next Version Set:   $NEXT_VER in $VERSION_FILE (local only)"
 echo "=================================================="
