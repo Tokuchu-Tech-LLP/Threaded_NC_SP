@@ -145,6 +145,23 @@ if "!HEX_SRC!"=="" (
     exit /b 1
 )
 
+for %%F in ("!HEX_SRC!") do (
+    if %%~zF equ 0 (
+        echo ERROR: Artifact '!HEX_SRC!' is empty (0 bytes).
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
+)
+for %%F in ("!ZIP_SRC!") do (
+    if %%~zF equ 0 (
+        echo ERROR: Artifact '!ZIP_SRC!' is empty (0 bytes).
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
+)
+
 echo Artifacts to package:
 echo   HEX: !HEX_SRC!
 echo   ZIP: !ZIP_SRC!
