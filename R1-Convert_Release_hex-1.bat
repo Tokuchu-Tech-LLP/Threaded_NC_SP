@@ -113,118 +113,136 @@ if not errorlevel 1 (
 )
 
 REM ------------------------------------------------------------------------------
-REM 6. Locate Build Artifacts (merged.hex & dfu_application.zip)
+REM 6. Locate Build Artifacts & Enforce Freshness (Built Today)
 REM ------------------------------------------------------------------------------
-set "HEX_SRC="
-set "ZIP_SRC="
+for %%I in ("%CD%") do set "REPO_NAME=%%~nxI"
 
-if exist "SPNC_FOTA\merged.hex" if exist "SPNC_FOTA\dfu_application.zip" (
-    set "HEX_SRC=SPNC_FOTA\merged.hex"
-    set "ZIP_SRC=SPNC_FOTA\dfu_application.zip"
-    echo Found release artifacts in directory: SPNC_FOTA\
-)
-
-if "!HEX_SRC!"=="" if exist "build\merged.hex" if exist "build\dfu_application.zip" (
-    set "HEX_SRC=build\merged.hex"
-    set "ZIP_SRC=build\dfu_application.zip"
-    echo Found release artifacts in directory: build\
-)
-
-if "!HEX_SRC!"=="" if exist "build\zephyr\merged.hex" if exist "build\zephyr\dfu_application.zip" (
-    set "HEX_SRC=build\zephyr\merged.hex"
-    set "ZIP_SRC=build\zephyr\dfu_application.zip"
-    echo Found release artifacts in directory: build\zephyr\
-)
-
-if "!HEX_SRC!"=="" (
-    for /d %%D in (*) do (
-        if not "%%D"=="Releases" if not "%%D"=="src" if not "%%D"=="boards" if not "%%D"=="docs" (
-            if exist "%%D\merged.hex" if exist "%%D\dfu_application.zip" (
-                set "HEX_SRC=%%D\merged.hex"
-                set "ZIP_SRC=%%D\dfu_application.zip"
-                echo Found release artifacts in directory: %%D\
-            )
-        )
-    )
-)
-
-if "!HEX_SRC!"=="" (
-    echo ERROR: Required release artifacts not found.
-    echo Looked for 'merged.hex' and 'dfu_application.zip'.
-    echo Please build the firmware before running the release script.
-    echo Release aborted.
-    pause
-    exit /b 1
-)
-
-for %%F in ("!HEX_SRC!") do (
-    if %%~zF equ 0 (
-        echo ERROR: Artifact '!HEX_SRC!' is empty (0 bytes).
-        echo Release aborted.
-        pause
-        exit /b 1
-    )
-)
-for %%F in ("!ZIP_SRC!") do (
-    if %%~zF equ 0 (
-        echo ERROR: Artifact '!ZIP_SRC!' is empty (0 bytes).
-        echo Release aborted.
-        pause
-        exit /b 1
-    )
-)
-
-echo Artifacts to package:
-echo   HEX: !HEX_SRC!
-echo   ZIP: !ZIP_SRC!
-
-REM ------------------------------------------------------------------------------
-REM 7. Create Release Directory & Copy Artifacts
-REM ------------------------------------------------------------------------------
 set "TS="
 for /f %%A in ('powershell -NoProfile -Command "Get-Date -Format 'dd-MMM-yyyy-HH-mm'" 2^>nul') do set "TS=%%A"
 if "%TS%"=="" call :get_fallback_ts
 
-set "RELEASE_DIR=Releases\v%RELEASE_VER%_%TS%"
-if not exist "%RELEASE_DIR%" (
-    mkdir "%RELEASE_DIR%"
+set "TODAY_DATE="
+for /f %%A in ('powershell -NoProfile -Command "Get-Date -Format 'yyyy-MM-dd'" 2^>nul') do set "TODAY_DATE=%%A"
+
+echo Scanning for firmware build directories...
+echo Release date cutoff: Today (%TODAY_DATE%)
+echo.
+
+set "ELIGIBLE_COUNT=0"
+set "STALE_COUNT=0"
+
+for /f "tokens=1,2,3,4 delims=|" %%A in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$today = (Get-Date).Date; $repo = (Get-Item .).Name; if (!(Test-Path Releases)) { New-Item -ItemType Directory -Path Releases | Out-Null }; $candidates = @('SPNC_FOTA', 'build', 'build\zephyr', 'SPNC_FOTA\zephyr', 'bin', 'out'); $dirs = Get-ChildItem -Directory | Where-Object { $_.Name -notin @('Releases', 'src', 'boards', 'docs', 'Key', 'modules', 'zephyr', 'mcuboot', 'CMakeFiles', '.git', '.vscode', '_sysbuild') } | Select-Object -ExpandProperty Name; $allDirs = ($candidates + $dirs) | Select-Object -Unique; foreach ($d in $allDirs) { $hex = Join-Path $d 'merged.hex'; $zip = Join-Path $d 'dfu_application.zip'; if ((Test-Path $hex) -and (Test-Path $zip)) { $h = Get-Item $hex; $z = Get-Item $zip; if ($h.Length -gt 0 -and $z.Length -gt 0) { $timeStr = $h.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'); $tsClean = $h.LastWriteTime.ToString('dd-MMM-yyyy-HH-mm'); if ($h.LastWriteTime.Date -eq $today) { Write-Output ('FRESH|' + $d + '|' + $timeStr) } else { $hHash = (Get-FileHash -Algorithm SHA256 $hex).Hash; $zHash = (Get-FileHash -Algorithm SHA256 $zip).Hash; $existingHashes = @(); if (Test-Path Releases) { $existingHashes = (Get-ChildItem -Recurse -File Releases | ForEach-Object { (Get-FileHash -Algorithm SHA256 $_.FullName).Hash }) }; $savedStatus = 'Already archived in Releases/'; $safeName = $d -replace '[\\/]', '__'; if (($existingHashes -notcontains $hHash) -or ($existingHashes -notcontains $zHash)) { Copy-Item $hex (Join-Path Releases ('archived_' + $safeName + '_' + $tsClean + '_' + $repo + '_merged.hex')); Copy-Item $zip (Join-Path Releases ('archived_' + $safeName + '_' + $tsClean + '_' + $repo + '_dfu.zip')); $savedStatus = 'Archived to Releases/' }; Remove-Item -Recurse -Force $d; Write-Output ('STALE|' + $d + '|' + $timeStr + '|' + $savedStatus) } } } }" 2^>nul') do (
+    if "%%A"=="FRESH" (
+        set /a ELIGIBLE_COUNT+=1
+        set "BUILD_DIR_!ELIGIBLE_COUNT!=%%B"
+        set "BUILD_TIME_!ELIGIBLE_COUNT!=%%C"
+        echo   [FRESH BUILD] Found '%%B\' (Compiled today at %%C)
+    )
+    if "%%A"=="STALE" (
+        set /a STALE_COUNT+=1
+        set "STALE_DIR_!STALE_COUNT!=%%B"
+        set "STALE_TIME_!STALE_COUNT!=%%C"
+        echo   [OUTDATED / ARCHIVING] '%%B\' (Compiled on %%C - not today)
+        echo     -^> %%D
+        echo     -^> Removed outdated build directory '%%B\'.
+    )
+)
+
+echo.
+
+if !ELIGIBLE_COUNT! equ 0 (
+    echo ==================================================
+    echo Outdated build directory cleanup complete.
+    echo No fresh firmware builds compiled today were found.
+    echo Today's date: %TODAY_DATE%
+    echo ==================================================
+    if !STALE_COUNT! gtr 0 (
+        echo Processed and removed outdated build directories:
+        for /l %%I in (1,1,!STALE_COUNT!) do (
+            echo   - !STALE_DIR_%%I!\ (Built: !STALE_TIME_%%I!)
+        )
+        echo.
+    )
+    echo Please build the firmware (e.g. via 'west build') and re-run this script to release.
+    echo Release aborted.
+    pause
+    exit /b 1
+)
+
+echo Eligible builds to package (!ELIGIBLE_COUNT! build(s)):
+for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+    echo   %%I. !BUILD_DIR_%%I!\
+)
+echo.
+
+REM ------------------------------------------------------------------------------
+REM 7. Create Releases Directory & Package Artifacts
+REM ------------------------------------------------------------------------------
+set "RELEASE_BASE=Releases"
+if not exist "%RELEASE_BASE%" (
+    mkdir "%RELEASE_BASE%"
     if errorlevel 1 (
-        echo ERROR: Failed to create release directory '%RELEASE_DIR%'.
+        echo ERROR: Failed to create or access '%RELEASE_BASE%' directory.
         echo Release aborted.
         pause
         exit /b 1
     )
 )
 
-echo Creating release directory: %RELEASE_DIR%\
-copy /b "!HEX_SRC!" "%RELEASE_DIR%\merged.hex" >nul
-if errorlevel 1 (
-    echo ERROR: Failed to copy merged.hex into '%RELEASE_DIR%'.
-    echo Release aborted.
-    pause
-    exit /b 1
+echo Packaging release artifacts into '%RELEASE_BASE%\'...
+
+for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+    set "RAW_DIR=!BUILD_DIR_%%I!"
+    set "SAFE_NAME=!RAW_DIR:\=__!"
+    set "SAFE_NAME=!SAFE_NAME:/=__!"
+
+    set "TARGET_HEX_NAME=!SAFE_NAME!_v%RELEASE_VER%_%TS%_%REPO_NAME%_merged.hex"
+    set "TARGET_ZIP_NAME=!SAFE_NAME!_v%RELEASE_VER%_%TS%_%REPO_NAME%_dfu.zip"
+
+    set "TARGET_HEX_PATH=%RELEASE_BASE%\!TARGET_HEX_NAME!"
+    set "TARGET_ZIP_PATH=%RELEASE_BASE%\!TARGET_ZIP_NAME!"
+
+    set "HEX_NAME_%%I=!TARGET_HEX_NAME!"
+    set "ZIP_NAME_%%I=!TARGET_ZIP_NAME!"
+    set "HEX_PATH_%%I=!TARGET_HEX_PATH!"
+    set "ZIP_PATH_%%I=!TARGET_ZIP_PATH!"
+
+    echo Packaging build '!RAW_DIR!\':
+    echo   HEX -^> !TARGET_HEX_PATH!
+    copy /b "!RAW_DIR!\merged.hex" "!TARGET_HEX_PATH!" >nul
+    if errorlevel 1 (
+        echo ERROR: Failed to copy '!RAW_DIR!\merged.hex' to '!TARGET_HEX_PATH!'.
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
+
+    echo   ZIP -^> !TARGET_ZIP_PATH!
+    copy /b "!RAW_DIR!\dfu_application.zip" "!TARGET_ZIP_PATH!" >nul
+    if errorlevel 1 (
+        echo ERROR: Failed to copy '!RAW_DIR!\dfu_application.zip' to '!TARGET_ZIP_PATH!'.
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
+
+    if not exist "!TARGET_HEX_PATH!" (
+        echo ERROR: Target artifact '!TARGET_HEX_PATH!' not found after copy.
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
+    if not exist "!TARGET_ZIP_PATH!" (
+        echo ERROR: Target artifact '!TARGET_ZIP_PATH!' not found after copy.
+        echo Release aborted.
+        pause
+        exit /b 1
+    )
 )
 
-copy /b "!ZIP_SRC!" "%RELEASE_DIR%\dfu_application.zip" >nul
-if errorlevel 1 (
-    echo ERROR: Failed to copy dfu_application.zip into '%RELEASE_DIR%'.
-    echo Release aborted.
-    pause
-    exit /b 1
-)
-
-if not exist "%RELEASE_DIR%\merged.hex" (
-    echo ERROR: Target artifact '%RELEASE_DIR%\merged.hex' not found after copy.
-    echo Release aborted.
-    pause
-    exit /b 1
-)
-if not exist "%RELEASE_DIR%\dfu_application.zip" (
-    echo ERROR: Target artifact '%RELEASE_DIR%\dfu_application.zip' not found after copy.
-    echo Release aborted.
-    pause
-    exit /b 1
-)
+echo.
+echo Successfully packaged !ELIGIBLE_COUNT! build(s) into '%RELEASE_BASE%\'.
+echo.
 
 REM ------------------------------------------------------------------------------
 REM 8. Git Staging, Commit & Release Tag
@@ -242,11 +260,13 @@ if errorlevel 1 goto :git_add_failed
 git add R1-Convert_Release_hex-1.bat
 if errorlevel 1 goto :git_add_failed
 
-git add -f "%RELEASE_DIR%\merged.hex"
-if errorlevel 1 goto :git_add_failed
+for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+    git add -f "!HEX_PATH_%%I!"
+    if errorlevel 1 goto :git_add_failed
 
-git add -f "%RELEASE_DIR%\dfu_application.zip"
-if errorlevel 1 goto :git_add_failed
+    git add -f "!ZIP_PATH_%%I!"
+    if errorlevel 1 goto :git_add_failed
+)
 
 git ls-files --error-unmatch "%VERSION_FILE%" >nul 2>&1
 if errorlevel 1 (
@@ -255,22 +275,26 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "GIT_RELEASE_DIR=%RELEASE_DIR:\=/%"
-git diff --cached --name-only | findstr /x /c:"!GIT_RELEASE_DIR!/merged.hex" >nul
-if errorlevel 1 (
-    echo ERROR: '!GIT_RELEASE_DIR!/merged.hex' is not staged.
-    pause
-    exit /b 1
-)
-git diff --cached --name-only | findstr /x /c:"!GIT_RELEASE_DIR!/dfu_application.zip" >nul
-if errorlevel 1 (
-    echo ERROR: '!GIT_RELEASE_DIR!/dfu_application.zip' is not staged.
-    pause
-    exit /b 1
+for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+    set "GIT_HEX_PATH=!HEX_PATH_%%I:\=/!"
+    set "GIT_ZIP_PATH=!ZIP_PATH_%%I:\=/!"
+
+    git diff --cached --name-only | findstr /x /c:"!GIT_HEX_PATH!" >nul
+    if errorlevel 1 (
+        echo ERROR: '!GIT_HEX_PATH!' is not staged.
+        pause
+        exit /b 1
+    )
+    git diff --cached --name-only | findstr /x /c:"!GIT_ZIP_PATH!" >nul
+    if errorlevel 1 (
+        echo ERROR: '!GIT_ZIP_PATH!' is not staged.
+        pause
+        exit /b 1
+    )
 )
 
 echo Creating release commit...
-git commit -m "release: version %RELEASE_VER%"
+git commit -m "release: version %RELEASE_VER% (!ELIGIBLE_COUNT! build variant(s))"
 if errorlevel 1 (
     echo ERROR: Git commit failed.
     pause
@@ -278,7 +302,8 @@ if errorlevel 1 (
 )
 
 echo Creating annotated Git tag: %TAG_NAME%...
-git tag -a "%TAG_NAME%" -m "Release %TAG_NAME%"
+set "TAG_MSG=Release %TAG_NAME% (%TS%)"
+git tag -a "%TAG_NAME%" -m "%TAG_MSG%"
 if errorlevel 1 (
     echo ERROR: Failed to create Git tag '%TAG_NAME%'.
     pause
@@ -306,9 +331,6 @@ if errorlevel 1 (
 )
 
 set "GIT_VERSION_FILE=%VERSION_FILE:\=/%"
-set "EXPECTED_HEX=!GIT_RELEASE_DIR!/merged.hex"
-set "EXPECTED_ZIP=!GIT_RELEASE_DIR!/dfu_application.zip"
-
 git ls-tree -r --name-only "!TAG_COMMIT!" -- "%GIT_VERSION_FILE%" | findstr /x /c:"%GIT_VERSION_FILE%" >nul
 if errorlevel 1 (
     echo INTEGRITY ERROR: Exact file path '%GIT_VERSION_FILE%' is missing from release tag commit (!TAG_COMMIT!).
@@ -316,21 +338,25 @@ if errorlevel 1 (
     exit /b 1
 )
 
-git ls-tree -r --name-only "!TAG_COMMIT!" -- "!EXPECTED_HEX!" | findstr /x /c:"!EXPECTED_HEX!" >nul
-if errorlevel 1 (
-    echo INTEGRITY ERROR: Exact artifact path '!EXPECTED_HEX!' is missing from release tag commit (!TAG_COMMIT!).
-    pause
-    exit /b 1
+for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+    set "GIT_HEX_PATH=!HEX_PATH_%%I:\=/!"
+    set "GIT_ZIP_PATH=!ZIP_PATH_%%I:\=/!"
+
+    git ls-tree -r --name-only "!TAG_COMMIT!" -- "!GIT_HEX_PATH!" | findstr /x /c:"!GIT_HEX_PATH!" >nul
+    if errorlevel 1 (
+        echo INTEGRITY ERROR: Exact artifact path '!GIT_HEX_PATH!' is missing from release tag commit (!TAG_COMMIT!).
+        pause
+        exit /b 1
+    )
+    git ls-tree -r --name-only "!TAG_COMMIT!" -- "!GIT_ZIP_PATH!" | findstr /x /c:"!GIT_ZIP_PATH!" >nul
+    if errorlevel 1 (
+        echo INTEGRITY ERROR: Exact artifact path '!GIT_ZIP_PATH!' is missing from release tag commit (!TAG_COMMIT!).
+        pause
+        exit /b 1
+    )
 )
 
-git ls-tree -r --name-only "!TAG_COMMIT!" -- "!EXPECTED_ZIP!" | findstr /x /c:"!EXPECTED_ZIP!" >nul
-if errorlevel 1 (
-    echo INTEGRITY ERROR: Exact artifact path '!EXPECTED_ZIP!' is missing from release tag commit (!TAG_COMMIT!).
-    pause
-    exit /b 1
-)
-
-echo Release tag integrity verified: exact source + firmware artifacts confirmed.
+echo Release tag integrity verified: exact source + all firmware artifacts confirmed.
 
 REM ------------------------------------------------------------------------------
 REM 10. Push to GitHub Remote
@@ -411,10 +437,16 @@ echo.
 echo ==================================================
 echo  Release %TAG_NAME% Completed Successfully!
 echo ==================================================
+echo Firmware Project:   %REPO_NAME%
 echo Firmware Released:  %RELEASE_VER%
-echo Release Directory:  %RELEASE_DIR%\
-echo Release Artifacts:  merged.hex, dfu_application.zip
+echo Release Directory:  %RELEASE_BASE%\
 echo Git Release Tag:    %TAG_NAME%
+echo Build Variants Packaged (!ELIGIBLE_COUNT!):
+for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+    echo   - [!BUILD_DIR_%%I!]
+    echo       HEX: !HEX_NAME_%%I!
+    echo       ZIP: !ZIP_NAME_%%I!
+)
 echo Next Version Set:   %NEXT_VER% in %VERSION_FILE% (local only)
 echo ==================================================
 
