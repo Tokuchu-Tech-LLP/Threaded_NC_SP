@@ -103,6 +103,15 @@ if %errorlevel% equ 0 (
     exit /b 1
 )
 
+git ls-remote --tags origin "refs/tags/%TAG_NAME%" 2>nul | findstr /c:"%TAG_NAME%" >nul
+if %errorlevel% equ 0 (
+    echo ERROR: Remote Git tag '%TAG_NAME%' already exists on origin.
+    echo If the release already reached GitHub, advance '%VERSION_FILE%' to %NEXT_VER% for the next cycle.
+    echo Release aborted.
+    pause
+    exit /b 1
+)
+
 REM ------------------------------------------------------------------------------
 REM 6. Locate Build Artifacts (merged.hex & dfu_application.zip)
 REM ------------------------------------------------------------------------------
@@ -207,6 +216,27 @@ git add R1-Convert_Release_hex-1.bat
 git add -f "%RELEASE_DIR%\merged.hex"
 git add -f "%RELEASE_DIR%\dfu_application.zip"
 
+git ls-files --error-unmatch "%VERSION_FILE%" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ERROR: '%VERSION_FILE%' is not tracked or staged.
+    pause
+    exit /b 1
+)
+
+set "GIT_RELEASE_DIR=%RELEASE_DIR:\=/%"
+git diff --cached --name-only | findstr /x /c:"!GIT_RELEASE_DIR!/merged.hex" >nul
+if %errorlevel% neq 0 (
+    echo ERROR: '!GIT_RELEASE_DIR!/merged.hex' is not staged.
+    pause
+    exit /b 1
+)
+git diff --cached --name-only | findstr /x /c:"!GIT_RELEASE_DIR!/dfu_application.zip" >nul
+if %errorlevel% neq 0 (
+    echo ERROR: '!GIT_RELEASE_DIR!/dfu_application.zip' is not staged.
+    pause
+    exit /b 1
+)
+
 echo Creating release commit...
 git commit -m "release: version %RELEASE_VER%"
 if %errorlevel% neq 0 (
@@ -224,30 +254,50 @@ if %errorlevel% neq 0 (
 )
 
 REM ------------------------------------------------------------------------------
-REM 9. Verify Tag Integrity (git ls-tree -r)
+REM 9. Verify Tag Integrity (git ls-tree -r with Exact Path Matching)
 REM ------------------------------------------------------------------------------
 echo Verifying release tag integrity (git ls-tree -r refs/tags/%TAG_NAME%)...
-set "TAG_COMMIT="
-for /f "tokens=*" %%C in ('git rev-list -n 1 "%TAG_NAME%"') do set "TAG_COMMIT=%%C"
 
-git ls-tree -r --name-only "%TAG_COMMIT%" | findstr /c:"%VERSION_FILE%" >nul
-if %errorlevel% neq 0 (
-    echo INTEGRITY ERROR: '%VERSION_FILE%' is missing from release tag commit.
+set "TAG_COMMIT="
+for /f "tokens=*" %%C in ('git rev-list -n 1 "%TAG_NAME%" 2^>nul') do set "TAG_COMMIT=%%C"
+if "!TAG_COMMIT!"=="" (
+    echo INTEGRITY ERROR: Tag '%TAG_NAME%' could not be resolved to a commit SHA.
     pause
     exit /b 1
 )
-git ls-tree -r --name-only "%TAG_COMMIT%" | findstr /c:"merged.hex" >nul
+
+git cat-file -e "!TAG_COMMIT!^{commit}" 2>nul
 if %errorlevel% neq 0 (
-    echo INTEGRITY ERROR: 'merged.hex' is missing from release tag commit.
+    echo INTEGRITY ERROR: Resolved SHA '!TAG_COMMIT!' for tag '%TAG_NAME%' is not a valid commit object.
     pause
     exit /b 1
 )
-git ls-tree -r --name-only "%TAG_COMMIT%" | findstr /c:"dfu_application.zip" >nul
+
+set "GIT_VERSION_FILE=%VERSION_FILE:\=/%"
+set "EXPECTED_HEX=!GIT_RELEASE_DIR!/merged.hex"
+set "EXPECTED_ZIP=!GIT_RELEASE_DIR!/dfu_application.zip"
+
+git ls-tree -r --name-only "!TAG_COMMIT!" -- "%GIT_VERSION_FILE%" | findstr /x /c:"%GIT_VERSION_FILE%" >nul
 if %errorlevel% neq 0 (
-    echo INTEGRITY ERROR: 'dfu_application.zip' is missing from release tag commit.
+    echo INTEGRITY ERROR: Exact file path '%GIT_VERSION_FILE%' is missing from release tag commit (!TAG_COMMIT!).
     pause
     exit /b 1
 )
+
+git ls-tree -r --name-only "!TAG_COMMIT!" -- "!EXPECTED_HEX!" | findstr /x /c:"!EXPECTED_HEX!" >nul
+if %errorlevel% neq 0 (
+    echo INTEGRITY ERROR: Exact artifact path '!EXPECTED_HEX!' is missing from release tag commit (!TAG_COMMIT!).
+    pause
+    exit /b 1
+)
+
+git ls-tree -r --name-only "!TAG_COMMIT!" -- "!EXPECTED_ZIP!" | findstr /x /c:"!EXPECTED_ZIP!" >nul
+if %errorlevel% neq 0 (
+    echo INTEGRITY ERROR: Exact artifact path '!EXPECTED_ZIP!' is missing from release tag commit (!TAG_COMMIT!).
+    pause
+    exit /b 1
+)
+
 echo Release tag integrity verified: exact source + firmware artifacts confirmed.
 
 REM ------------------------------------------------------------------------------
@@ -280,7 +330,7 @@ if %errorlevel% neq 0 (
 )
 
 REM ------------------------------------------------------------------------------
-REM 10. Advance to Next Development Version (Local Only)
+REM 11. Advance to Next Development Version (Local Only & Verified)
 REM ------------------------------------------------------------------------------
 echo.
 echo Advancing '%VERSION_FILE%' locally to %NEXT_VER% for next development cycle...
@@ -295,8 +345,35 @@ echo Advancing '%VERSION_FILE%' locally to %NEXT_VER% for next development cycle
     echo #endif /* APP_VERSION_H */
 ) > "%VERSION_FILE%"
 
+if not exist "%VERSION_FILE%" (
+    echo ERROR: Failed to write to '%VERSION_FILE%'.
+    pause
+    exit /b 1
+)
+
+for %%F in ("%VERSION_FILE%") do (
+    if %%~zF equ 0 (
+        echo ERROR: Version definition file '%VERSION_FILE%' is empty after write.
+        pause
+        exit /b 1
+    )
+)
+
+set "WRITTEN_VER="
+for /f "tokens=3" %%A in ('findstr /r /c:"#define  *APP_VERSION_STR" "%VERSION_FILE%"') do (
+    set "WRITTEN_VER=%%~A"
+)
+
+if not "!WRITTEN_VER!"=="!NEXT_VER!" (
+    echo ERROR: Version verification failed after writing '%VERSION_FILE%'.
+    echo Expected: !NEXT_VER!, found: !WRITTEN_VER!
+    pause
+    exit /b 1
+)
+echo Verified: '%VERSION_FILE%' successfully set to %NEXT_VER% for next development cycle.
+
 REM ------------------------------------------------------------------------------
-REM 11. Success Summary
+REM 12. Success Summary
 REM ------------------------------------------------------------------------------
 echo.
 echo ==================================================

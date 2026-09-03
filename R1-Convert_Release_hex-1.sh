@@ -185,11 +185,11 @@ if ! git ls-files --error-unmatch "$VERSION_FILE" >/dev/null 2>&1; then
 fi
 
 STAGED_FILES=$(git diff --cached --name-only)
-if ! echo "$STAGED_FILES" | grep -q "$RELEASE_DIR/merged.hex"; then
+if ! echo "$STAGED_FILES" | grep -Fxq "$RELEASE_DIR/merged.hex"; then
     echo "ERROR: '$RELEASE_DIR/merged.hex' is not staged."
     exit 1
 fi
-if ! echo "$STAGED_FILES" | grep -q "$RELEASE_DIR/dfu_application.zip"; then
+if ! echo "$STAGED_FILES" | grep -Fxq "$RELEASE_DIR/dfu_application.zip"; then
     echo "ERROR: '$RELEASE_DIR/dfu_application.zip' is not staged."
     exit 1
 fi
@@ -201,24 +201,41 @@ echo "Creating annotated Git tag: $TAG_NAME..."
 git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
 
 # ------------------------------------------------------------------------------
-# 9. Verify Tag Integrity (git ls-tree -r)
+# 9. Verify Tag Integrity (git ls-tree -r with Exact Path Matching)
 # ------------------------------------------------------------------------------
 echo "Verifying release tag integrity (git ls-tree -r refs/tags/$TAG_NAME)..."
-TAG_COMMIT=$(git rev-list -n 1 "$TAG_NAME")
-TAG_FILES=$(git ls-tree -r --name-only "$TAG_COMMIT")
 
-if ! echo "$TAG_FILES" | grep -q "$VERSION_FILE"; then
-    echo "INTEGRITY ERROR: '$VERSION_FILE' is missing from release tag commit."
+# Verify tag resolves to a valid commit
+TAG_COMMIT=$(git rev-list -n 1 "$TAG_NAME" 2>/dev/null || true)
+if [[ -z "$TAG_COMMIT" ]]; then
+    echo "INTEGRITY ERROR: Tag '$TAG_NAME' could not be resolved to a commit SHA."
     exit 1
 fi
-if ! echo "$TAG_FILES" | grep -q "$RELEASE_DIR/merged.hex"; then
-    echo "INTEGRITY ERROR: 'merged.hex' is missing from release tag commit."
+
+if ! git cat-file -e "${TAG_COMMIT}^{commit}" 2>/dev/null; then
+    echo "INTEGRITY ERROR: Resolved SHA '$TAG_COMMIT' for tag '$TAG_NAME' is not a valid commit object."
     exit 1
 fi
-if ! echo "$TAG_FILES" | grep -q "$RELEASE_DIR/dfu_application.zip"; then
-    echo "INTEGRITY ERROR: 'dfu_application.zip' is missing from release tag commit."
+
+# Verify exact expected paths exist in the tagged commit (no substring matching)
+EXPECTED_HEX="$RELEASE_DIR/merged.hex"
+EXPECTED_ZIP="$RELEASE_DIR/dfu_application.zip"
+
+if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$VERSION_FILE" | grep -Fxq "$VERSION_FILE"; then
+    echo "INTEGRITY ERROR: Exact file path '$VERSION_FILE' is missing from release tag commit ($TAG_COMMIT)."
     exit 1
 fi
+
+if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$EXPECTED_HEX" | grep -Fxq "$EXPECTED_HEX"; then
+    echo "INTEGRITY ERROR: Exact artifact path '$EXPECTED_HEX' is missing from release tag commit ($TAG_COMMIT)."
+    exit 1
+fi
+
+if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$EXPECTED_ZIP" | grep -Fxq "$EXPECTED_ZIP"; then
+    echo "INTEGRITY ERROR: Exact artifact path '$EXPECTED_ZIP' is missing from release tag commit ($TAG_COMMIT)."
+    exit 1
+fi
+
 echo "Release tag integrity verified: exact source + firmware artifacts confirmed."
 
 # ------------------------------------------------------------------------------
@@ -247,7 +264,7 @@ if ! git push origin "$TAG_NAME"; then
 fi
 
 # ------------------------------------------------------------------------------
-# 10. Advance to Next Development Version (Local Only)
+# 11. Advance to Next Development Version (Local Only & Verified)
 # ------------------------------------------------------------------------------
 echo ""
 echo "Advancing '$VERSION_FILE' locally to $NEXT_VER for next development cycle..."
@@ -262,8 +279,24 @@ cat <<EOF > "$VERSION_FILE"
 #endif /* APP_VERSION_H */
 EOF
 
+# Verify write and confirm APP_VERSION_STR actually equals calculated next version
+if [[ ! -f "$VERSION_FILE" || ! -s "$VERSION_FILE" ]]; then
+    echo "ERROR: Failed to write to '$VERSION_FILE' or file is empty."
+    exit 1
+fi
+
+WRITTEN_LINE=$(grep -E '^[[:space:]]*#[[:space:]]*define[[:space:]]+APP_VERSION_STR[[:space:]]+' "$VERSION_FILE" || true)
+WRITTEN_VER=$(echo "$WRITTEN_LINE" | sed -E 's/.*APP_VERSION_STR[[:space:]]+"([^"]+)".*/\1/')
+
+if [[ "$WRITTEN_VER" != "$NEXT_VER" ]]; then
+    echo "ERROR: Version verification failed after writing '$VERSION_FILE'."
+    echo "Expected: $NEXT_VER, found: $WRITTEN_VER"
+    exit 1
+fi
+echo "Verified: '$VERSION_FILE' successfully set to $NEXT_VER for next development cycle."
+
 # ------------------------------------------------------------------------------
-# 11. Success Summary
+# 12. Success Summary
 # ------------------------------------------------------------------------------
 echo ""
 echo "=================================================="
