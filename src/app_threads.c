@@ -3,6 +3,7 @@
 #include <zephyr/device.h>
 #include <stdio.h>
 #include <string.h>
+#include <app_version.h>
 
 #include "app_threads.h"
 #include "spo2_sensor.h"
@@ -140,7 +141,7 @@ void app_post_telemetry(const struct telemetry_msg *msg)
 static void spo2_thread_entry(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
-    printk("SpO2 sampling thread started");
+    printk("SpO2 sampling thread started\n");
 
     spo2_init();
 
