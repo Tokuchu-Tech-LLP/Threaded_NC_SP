@@ -423,6 +423,26 @@ if errorlevel 1 (
 )
 
 REM ------------------------------------------------------------------------------
+REM 10b. Publish GitHub Release with Artifact Assets (gh CLI)
+REM ------------------------------------------------------------------------------
+echo Creating GitHub Release with downloadable firmware assets...
+where gh >nul 2>&1
+if not errorlevel 1 (
+    set "RELEASE_ASSETS="
+    for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
+        set "RELEASE_ASSETS=!RELEASE_ASSETS! "!HEX_PATH_%%I!" "!ZIP_PATH_%%I!""
+    )
+    gh release create "%TAG_NAME%" !RELEASE_ASSETS! --title "Release %TAG_NAME%" --notes "Firmware release %RELEASE_VER% for %REPO_NAME%"
+    if errorlevel 1 (
+        echo WARNING: Could not create GitHub Release via gh CLI. Tag was pushed successfully.
+    ) else (
+        echo GitHub Release created successfully with downloadable binary assets.
+    )
+) else (
+    echo NOTE: GitHub CLI [gh] not installed or not in PATH. Skipping GitHub Release asset upload.
+)
+
+REM ------------------------------------------------------------------------------
 REM 11. Advance to Next Development Version (Local Only & Verified)
 REM ------------------------------------------------------------------------------
 echo.

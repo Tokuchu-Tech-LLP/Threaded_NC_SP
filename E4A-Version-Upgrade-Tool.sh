@@ -457,6 +457,19 @@ if ! git push origin "$TAG_NAME"; then
 fi
 
 # ------------------------------------------------------------------------------
+# 10b. Publish GitHub Release with Artifact Assets (gh CLI)
+# ------------------------------------------------------------------------------
+echo "Creating GitHub Release with downloadable firmware assets..."
+if command -v gh >/dev/null 2>&1; then
+    gh release create "$TAG_NAME" "${ALL_PACKAGED_FILES[@]}" --title "Release $TAG_NAME" --notes "Firmware release $RELEASE_VER for $REPO_NAME" || {
+        echo "WARNING: Could not create GitHub Release via gh CLI. Tag was pushed successfully."
+    }
+    echo "GitHub Release created successfully with downloadable binary assets."
+else
+    echo "NOTE: GitHub CLI (gh) not installed or not in PATH. Skipping GitHub Release asset upload."
+fi
+
+# ------------------------------------------------------------------------------
 # 11. Advance to Next Development Version (Local Only & Verified)
 # ------------------------------------------------------------------------------
 echo ""
