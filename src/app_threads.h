@@ -21,7 +21,7 @@ struct telemetry_msg {
             int16_t heart_rate;
         } spo2;
         struct {
-            int16_t temp_c_x100; /* Temperature in Celsius * 100 */
+            int16_t temp_f_x100; /* Temperature in Fahrenheit * 100 */
         } temp;
         struct {
             uint8_t alert_id;

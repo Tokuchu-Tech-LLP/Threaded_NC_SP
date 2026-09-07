@@ -14,7 +14,9 @@
 #include "common_button.h"
 
 LOG_MODULE_REGISTER(app_threads, LOG_LEVEL_INF);
+#ifndef BLE_TYPE_BUT
 #define BLE_TYPE_BUT 0x08
+#endif
 
 /* Message queues for inter-thread telemetry & high-priority alert dispatch */
 K_MSGQ_DEFINE(telemetry_msgq, sizeof(struct telemetry_msg), 16, 4);
@@ -208,25 +210,39 @@ static int process_telemetry_msg(const struct telemetry_msg *msg)
 
     switch (msg->type) {
     case MSG_TYPE_SPO2:
+    {
+        char prof_buf[32] = {0};
+        common_config_get_profile(prof_buf, sizeof(prof_buf));
+
         snprintf(json_buf, sizeof(json_buf),
-            "{\"unique_id\":\"%s\",\"type\":\"NURSE_CALL_SPO2\",\"SpO2\":%d,\"HeartRate\":%d}",
-            unique_id, msg->data.spo2.spo2, msg->data.spo2.heart_rate);
-        printk("TX SpO2 Telemetry: %s", json_buf);
+            "{\"unique_id\":\"%s\",\"profile\":\"%s\",\"type\":11,\"SpO2\":%d,\"HeartRate\":%d}",
+            unique_id, prof_buf, msg->data.spo2.spo2, msg->data.spo2.heart_rate);
+        printk("TX SpO2 Telemetry: %s\n", json_buf);
         rc = send_data_to_OTBR((uint8_t *)json_buf, BLE_TYPE_SPO2, msg->data.spo2.spo2);
+
+        /* Send Heart Rate over BLE in Home mode */
+        if (!common_is_hospital()) {
+            k_msleep(20);
+            send_typed_value_to_mobile(BLE_TYPE_HR, msg->data.spo2.heart_rate);
+        }
         break;
+    }
 
     case MSG_TYPE_TEMP:
     {
-        int16_t temp_x100 = msg->data.temp.temp_c_x100;
+        char prof_buf[32] = {0};
+        common_config_get_profile(prof_buf, sizeof(prof_buf));
+
+        int16_t temp_x100 = msg->data.temp.temp_f_x100;
         int32_t whole = temp_x100 / 100;
         int32_t frac = temp_x100 % 100;
         if (frac < 0) {
             frac = -frac;
         }
         snprintf(json_buf, sizeof(json_buf),
-            "{\"unique_id\":\"%s\",\"type\":\"NURSE_CALL_SPO2\",\"Temp_C\":%ld.%02ld}",
-            unique_id, (long)whole, (long)frac);
-        printk("TX Temp Telemetry: %s", json_buf);
+            "{\"unique_id\":\"%s\",\"profile\":\"%s\",\"type\":11,\"Temp_F\":%ld.%02ld}",
+            unique_id, prof_buf, (long)whole, (long)frac);
+        printk("TX Temp Telemetry: %s\n", json_buf);
         rc = send_data_to_OTBR((uint8_t *)json_buf, BLE_TYPE_TEMP, temp_x100);
         break;
     }
@@ -436,7 +452,30 @@ void send_typed_value_to_mobile(uint8_t type, int16_t value)
     if (err) {
         LOG_ERR("BLE binary send failed: %d", err);
     } else {
-        printk("BLE binary sent: type=%d value=%d", type, value);
+        printk("BLE binary sent: type=%d value=%d\n", type, value);
     }
+}
+
+void coap_send_device_specific_config(void)
+{
+    char config_json[256];
+    extern int send_data_to_OTBR_internal(uint8_t *buf);
+
+    snprintf(config_json, sizeof(config_json),
+        "{"
+        "\"Type\":\"SPO2\","
+        "\"SensorNo\":%u,"
+        "\"SpO2 Scan\":%u,"
+        "\"Temp Scan rate\":%u,"
+        "\"No Finger Threshold\":%d"
+        "}",
+        spo2_cfg.sensor_no,
+        spo2_cfg.spo2_scan_rate_s,
+        spo2_cfg.body_temp_scan_rate_s,
+        spo2_cfg.no_finger_threshold);
+
+    printk("Device Specific CFG=%s\n", config_json);
+    send_data_to_OTBR_internal((uint8_t *)config_json);
+    k_msleep(50);
 }
 

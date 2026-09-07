@@ -140,7 +140,7 @@ void temp_start(void)
         .type = MSG_TYPE_TEMP,
         .timestamp = k_uptime_get()
     };
-    msg.data.temp.temp_c_x100 = (int16_t)temperature_x100;
+    msg.data.temp.temp_f_x100 = (int16_t)temperature_x100;
 
     app_post_telemetry(&msg);
 }
