@@ -30,8 +30,16 @@ if errorlevel 1 (
 )
 
 set "VERSION_FILE=src\app_version.h"
+set "ROOT_VERSION_FILE=VERSION"
 if not exist "%VERSION_FILE%" (
     echo ERROR: Version definition file '%VERSION_FILE%' not found.
+    echo Release aborted.
+    pause
+    exit /b 1
+)
+
+if not exist "%ROOT_VERSION_FILE%" (
+    echo ERROR: Zephyr root version file '%ROOT_VERSION_FILE%' not found.
     echo Release aborted.
     pause
     exit /b 1
@@ -251,6 +259,9 @@ echo Staging release files in Git...
 git add "%VERSION_FILE%"
 if errorlevel 1 goto :git_add_failed
 
+git add "%ROOT_VERSION_FILE%"
+if errorlevel 1 goto :git_add_failed
+
 git add .gitignore
 if errorlevel 1 goto :git_add_failed
 
@@ -271,6 +282,13 @@ for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
 git ls-files --error-unmatch "%VERSION_FILE%" >nul 2>&1
 if errorlevel 1 (
     echo ERROR: '%VERSION_FILE%' is not tracked or staged.
+    pause
+    exit /b 1
+)
+
+git ls-files --error-unmatch "%ROOT_VERSION_FILE%" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: '%ROOT_VERSION_FILE%' is not tracked or staged.
     pause
     exit /b 1
 )
@@ -338,6 +356,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
+git ls-tree -r --name-only "!TAG_COMMIT!" -- "%ROOT_VERSION_FILE%" | findstr /x /c:"%ROOT_VERSION_FILE%" >nul
+if errorlevel 1 (
+    echo INTEGRITY ERROR: Exact file path '%ROOT_VERSION_FILE%' is missing from release tag commit (!TAG_COMMIT!).
+    pause
+    exit /b 1
+)
+
 for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
     set "GIT_HEX_PATH=!HEX_PATH_%%I:\=/!"
     set "GIT_ZIP_PATH=!ZIP_PATH_%%I:\=/!"
@@ -391,7 +416,7 @@ REM ----------------------------------------------------------------------------
 REM 11. Advance to Next Development Version (Local Only & Verified)
 REM ------------------------------------------------------------------------------
 echo.
-echo Advancing '%VERSION_FILE%' locally to %NEXT_VER% for next development cycle...
+echo Advancing '%VERSION_FILE%' and '%ROOT_VERSION_FILE%' locally to %NEXT_VER% for next development cycle...
 (
     echo #ifndef APP_VERSION_H
     echo #define APP_VERSION_H
@@ -428,7 +453,30 @@ if not "!WRITTEN_VER!"=="!NEXT_VER!" (
     pause
     exit /b 1
 )
-echo Verified: '%VERSION_FILE%' successfully set to %NEXT_VER% for next development cycle.
+
+(
+    echo VERSION_MAJOR = %MAJOR%
+    echo VERSION_MINOR = %NEXT_PATCH%
+    echo PATCHLEVEL = 0
+    echo VERSION_TWEAK = 0
+    echo EXTRAVERSION =
+) > "%ROOT_VERSION_FILE%"
+
+if not exist "%ROOT_VERSION_FILE%" (
+    echo ERROR: Failed to write to '%ROOT_VERSION_FILE%'.
+    pause
+    exit /b 1
+)
+
+for %%F in ("%ROOT_VERSION_FILE%") do (
+    if %%~zF equ 0 (
+        echo ERROR: Zephyr root version file '%ROOT_VERSION_FILE%' is empty after write.
+        pause
+        exit /b 1
+    )
+)
+
+echo Verified: '%VERSION_FILE%' and '%ROOT_VERSION_FILE%' successfully set to %NEXT_VER% for next development cycle.
 
 REM ------------------------------------------------------------------------------
 REM 12. Success Summary
@@ -447,7 +495,7 @@ for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
     echo       HEX: !HEX_NAME_%%I!
     echo       ZIP: !ZIP_NAME_%%I!
 )
-echo Next Version Set:   %NEXT_VER% in %VERSION_FILE% (local only)
+echo Next Version Set:   %NEXT_VER% in %VERSION_FILE% and %ROOT_VERSION_FILE% (local only)
 echo ==================================================
 
 pause

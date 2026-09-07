@@ -28,8 +28,15 @@ if ! git remote get-url origin >/dev/null 2>&1; then
 fi
 
 VERSION_FILE="src/app_version.h"
+ROOT_VERSION_FILE="VERSION"
 if [[ ! -f "$VERSION_FILE" ]]; then
     echo "ERROR: Version definition file '$VERSION_FILE' not found."
+    echo "Release aborted."
+    exit 1
+fi
+
+if [[ ! -f "$ROOT_VERSION_FILE" ]]; then
+    echo "ERROR: Zephyr root version file '$ROOT_VERSION_FILE' not found."
     echo "Release aborted."
     exit 1
 fi
@@ -334,6 +341,7 @@ echo ""
 # ------------------------------------------------------------------------------
 echo "Staging release files in Git..."
 git add "$VERSION_FILE" || { echo "ERROR: Failed to stage '$VERSION_FILE'."; echo "Release aborted."; exit 1; }
+git add "$ROOT_VERSION_FILE" || { echo "ERROR: Failed to stage '$ROOT_VERSION_FILE'."; echo "Release aborted."; exit 1; }
 git add .gitignore || { echo "ERROR: Failed to stage '.gitignore'."; echo "Release aborted."; exit 1; }
 git add R1-Convert_Release_hex-1.sh || { echo "ERROR: Failed to stage 'R1-Convert_Release_hex-1.sh'."; echo "Release aborted."; exit 1; }
 git add R1-Convert_Release_hex-1.bat || { echo "ERROR: Failed to stage 'R1-Convert_Release_hex-1.bat'."; echo "Release aborted."; exit 1; }
@@ -345,6 +353,11 @@ done
 # Verify expected files are staged
 if ! git ls-files --error-unmatch "$VERSION_FILE" >/dev/null 2>&1; then
     echo "ERROR: '$VERSION_FILE' is not tracked or staged."
+    exit 1
+fi
+
+if ! git ls-files --error-unmatch "$ROOT_VERSION_FILE" >/dev/null 2>&1; then
+    echo "ERROR: '$ROOT_VERSION_FILE' is not tracked or staged."
     exit 1
 fi
 
@@ -397,6 +410,11 @@ if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$VERSION_FILE" | grep -Fxq "$V
     exit 1
 fi
 
+if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$ROOT_VERSION_FILE" | grep -Fxq "$ROOT_VERSION_FILE"; then
+    echo "INTEGRITY ERROR: Exact file path '$ROOT_VERSION_FILE' is missing from release tag commit ($TAG_COMMIT)."
+    exit 1
+fi
+
 for target_file in "${ALL_PACKAGED_FILES[@]}"; do
     if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$target_file" | grep -Fxq "$target_file"; then
         echo "INTEGRITY ERROR: Exact artifact path '$target_file' is missing from release tag commit ($TAG_COMMIT)."
@@ -435,7 +453,7 @@ fi
 # 11. Advance to Next Development Version (Local Only & Verified)
 # ------------------------------------------------------------------------------
 echo ""
-echo "Advancing '$VERSION_FILE' locally to $NEXT_VER for next development cycle..."
+echo "Advancing '$VERSION_FILE' and '$ROOT_VERSION_FILE' locally to $NEXT_VER for next development cycle..."
 cat <<EOF > "$VERSION_FILE"
 #ifndef APP_VERSION_H
 #define APP_VERSION_H
@@ -460,7 +478,21 @@ if [[ "$WRITTEN_VER" != "$NEXT_VER" ]]; then
     echo "Expected: $NEXT_VER, found: $WRITTEN_VER"
     exit 1
 fi
-echo "Verified: '$VERSION_FILE' successfully set to $NEXT_VER for next development cycle."
+
+cat <<EOF > "$ROOT_VERSION_FILE"
+VERSION_MAJOR = $MAJOR
+VERSION_MINOR = $NEXT_PATCH
+PATCHLEVEL = 0
+VERSION_TWEAK = 0
+EXTRAVERSION =
+EOF
+
+if [[ ! -f "$ROOT_VERSION_FILE" || ! -s "$ROOT_VERSION_FILE" ]]; then
+    echo "ERROR: Failed to write to '$ROOT_VERSION_FILE' or file is empty."
+    exit 1
+fi
+
+echo "Verified: '$VERSION_FILE' and '$ROOT_VERSION_FILE' successfully set to $NEXT_VER for next development cycle."
 
 # ------------------------------------------------------------------------------
 # 12. Success Summary
@@ -473,11 +505,11 @@ echo "Firmware Project:   $REPO_NAME"
 echo "Firmware Released:  $RELEASE_VER"
 echo "Release Directory:  $RELEASE_BASE/"
 echo "Git Release Tag:    $TAG_NAME"
-echo "Build Variants Packaged ($BUILD_COUNT):"
+echo "Build Variants Packaged (${BUILD_COUNT}):"
 for i in "${!ELIGIBLE_BUILDS[@]}"; do
     echo "  - [${ELIGIBLE_BUILDS[$i]}]"
     echo "      HEX: ${COPIED_HEX_NAMES[$i]}"
     echo "      ZIP: ${COPIED_ZIP_NAMES[$i]}"
 done
-echo "Next Version Set:   $NEXT_VER in $VERSION_FILE (local only)"
+echo "Next Version Set:   $NEXT_VER in $VERSION_FILE and $ROOT_VERSION_FILE (local only)"
 echo "=================================================="
