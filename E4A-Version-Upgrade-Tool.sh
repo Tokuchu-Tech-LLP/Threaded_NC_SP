@@ -66,7 +66,14 @@ fi
 RELEASE_VER="$CURRENT_VER"
 MAJOR="${CURRENT_VER%%.*}"
 PATCH="${CURRENT_VER##*.}"
-NEXT_PATCH=$((PATCH + 1))
+
+if [[ "$PATCH" =~ ^0[0-9]+$ ]]; then
+    PAD_LEN=${#PATCH}
+    NEXT_INT=$((10#$PATCH + 1))
+    printf -v NEXT_PATCH "%0${PAD_LEN}d" "$NEXT_INT"
+else
+    NEXT_PATCH=$((PATCH + 1))
+fi
 NEXT_VER="${MAJOR}.${NEXT_PATCH}"
 
 echo "Releasing firmware version: $RELEASE_VER"
@@ -294,8 +301,8 @@ for i in "${!ELIGIBLE_BUILDS[@]}"; do
     # Replace slashes and backslashes with double underscores for filename safety
     safe_folder_name=$(echo "$b_dir" | sed 's#[/\\]#__#g')
 
-    TARGET_HEX_NAME="${safe_folder_name}_v${RELEASE_VER}_${TIMESTAMP}_${REPO_NAME}_merged.hex"
-    TARGET_ZIP_NAME="${safe_folder_name}_v${RELEASE_VER}_${TIMESTAMP}_${REPO_NAME}_dfu.zip"
+    TARGET_HEX_NAME="${REPO_NAME}-${safe_folder_name}-v${RELEASE_VER}-merged-${TIMESTAMP}.hex"
+    TARGET_ZIP_NAME="${REPO_NAME}-${safe_folder_name}-v${RELEASE_VER}-dfu-${TIMESTAMP}.zip"
 
     TARGET_HEX_PATH="$RELEASE_BASE/$TARGET_HEX_NAME"
     TARGET_ZIP_PATH="$RELEASE_BASE/$TARGET_ZIP_NAME"
@@ -343,8 +350,8 @@ echo "Staging release files in Git..."
 git add "$VERSION_FILE" || { echo "ERROR: Failed to stage '$VERSION_FILE'."; echo "Release aborted."; exit 1; }
 git add "$ROOT_VERSION_FILE" || { echo "ERROR: Failed to stage '$ROOT_VERSION_FILE'."; echo "Release aborted."; exit 1; }
 git add .gitignore || { echo "ERROR: Failed to stage '.gitignore'."; echo "Release aborted."; exit 1; }
-git add R1-Convert_Release_hex-1.sh || { echo "ERROR: Failed to stage 'R1-Convert_Release_hex-1.sh'."; echo "Release aborted."; exit 1; }
-git add R1-Convert_Release_hex-1.bat || { echo "ERROR: Failed to stage 'R1-Convert_Release_hex-1.bat'."; echo "Release aborted."; exit 1; }
+git add E4A-Version-Upgrade-Tool.sh || { echo "ERROR: Failed to stage 'E4A-Version-Upgrade-Tool.sh'."; echo "Release aborted."; exit 1; }
+git add E4A-Version-Upgrade-Tool.bat || { echo "ERROR: Failed to stage 'E4A-Version-Upgrade-Tool.bat'."; echo "Release aborted."; exit 1; }
 
 for target_file in "${ALL_PACKAGED_FILES[@]}"; do
     git add -f "$target_file" || { echo "ERROR: Failed to stage '$target_file'."; echo "Release aborted."; exit 1; }
@@ -405,18 +412,18 @@ if ! git cat-file -e "${TAG_COMMIT}^{commit}" 2>/dev/null; then
     exit 1
 fi
 
-if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$VERSION_FILE" | grep -Fxq "$VERSION_FILE"; then
+if ! git cat-file -e "$TAG_COMMIT:$VERSION_FILE" 2>/dev/null; then
     echo "INTEGRITY ERROR: Exact file path '$VERSION_FILE' is missing from release tag commit ($TAG_COMMIT)."
     exit 1
 fi
 
-if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$ROOT_VERSION_FILE" | grep -Fxq "$ROOT_VERSION_FILE"; then
+if ! git cat-file -e "$TAG_COMMIT:$ROOT_VERSION_FILE" 2>/dev/null; then
     echo "INTEGRITY ERROR: Exact file path '$ROOT_VERSION_FILE' is missing from release tag commit ($TAG_COMMIT)."
     exit 1
 fi
 
 for target_file in "${ALL_PACKAGED_FILES[@]}"; do
-    if ! git ls-tree -r --name-only "$TAG_COMMIT" -- "$target_file" | grep -Fxq "$target_file"; then
+    if ! git cat-file -e "$TAG_COMMIT:$target_file" 2>/dev/null; then
         echo "INTEGRITY ERROR: Exact artifact path '$target_file' is missing from release tag commit ($TAG_COMMIT)."
         exit 1
     fi

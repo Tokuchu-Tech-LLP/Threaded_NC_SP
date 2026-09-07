@@ -7,7 +7,7 @@ REM Project: Threaded_NC_SP
 REM ==============================================================================
 
 echo ==================================================
-echo       TokuchuTech Firmware Release Manager        
+echo         E4A Firmware Version Upgrade Tool        
 echo ==================================================
 
 REM ------------------------------------------------------------------------------
@@ -75,7 +75,7 @@ if "%PART1%"=="" set "CURRENT_VER_INVALID=1"
 if "%PART2%"=="" set "CURRENT_VER_INVALID=1"
 
 if defined CURRENT_VER_INVALID (
-    echo ERROR: Current version '%CURRENT_VER%' does not follow Major.Patch format (e.g. 1.2).
+    echo ERROR: Current version '%CURRENT_VER%' does not follow Major.Patch format [e.g. 1.01].
     echo Release aborted.
     pause
     exit /b 1
@@ -87,7 +87,18 @@ REM ----------------------------------------------------------------------------
 set "RELEASE_VER=%CURRENT_VER%"
 set "MAJOR=%PART1%"
 set "PATCH=%PART2%"
-set /a NEXT_PATCH=PATCH+1
+
+REM Handle 2-digit patch padding (e.g. 1.01 -> 1.02) without octal errors
+set "PAD_ZERO=0"
+if "!PATCH:~0,1!"=="0" if not "!PATCH!"=="0" set "PAD_ZERO=1"
+set "CLEAN_PATCH=!PATCH!"
+if "!PAD_ZERO!"=="1" set "CLEAN_PATCH=!CLEAN_PATCH:~1!"
+set /a NEXT_INT=CLEAN_PATCH+1
+if "!PAD_ZERO!"=="1" if !NEXT_INT! lss 10 (
+    set "NEXT_PATCH=0!NEXT_INT!"
+) else (
+    set "NEXT_PATCH=!NEXT_INT!"
+)
 set "NEXT_VER=%MAJOR%.%NEXT_PATCH%"
 
 echo Releasing firmware version: %RELEASE_VER%
@@ -137,22 +148,30 @@ echo Release date cutoff: Today (%TODAY_DATE%)
 echo.
 
 set "ELIGIBLE_COUNT=0"
-set "STALE_COUNT=0"
 
-for /f "tokens=1,2,3,4 delims=|" %%A in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$today = (Get-Date).Date; $repo = (Get-Item .).Name; if (!(Test-Path Releases)) { New-Item -ItemType Directory -Path Releases | Out-Null }; $candidates = @('SPNC_FOTA', 'build', 'build\zephyr', 'SPNC_FOTA\zephyr', 'bin', 'out'); $dirs = Get-ChildItem -Directory | Where-Object { $_.Name -notin @('Releases', 'src', 'boards', 'docs', 'Key', 'modules', 'zephyr', 'mcuboot', 'CMakeFiles', '.git', '.vscode', '_sysbuild') } | Select-Object -ExpandProperty Name; $allDirs = ($candidates + $dirs) | Select-Object -Unique; foreach ($d in $allDirs) { $hex = Join-Path $d 'merged.hex'; $zip = Join-Path $d 'dfu_application.zip'; if ((Test-Path $hex) -and (Test-Path $zip)) { $h = Get-Item $hex; $z = Get-Item $zip; if ($h.Length -gt 0 -and $z.Length -gt 0) { $timeStr = $h.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'); $tsClean = $h.LastWriteTime.ToString('dd-MMM-yyyy-HH-mm'); if ($h.LastWriteTime.Date -eq $today) { Write-Output ('FRESH|' + $d + '|' + $timeStr) } else { $hHash = (Get-FileHash -Algorithm SHA256 $hex).Hash; $zHash = (Get-FileHash -Algorithm SHA256 $zip).Hash; $existingHashes = @(); if (Test-Path Releases) { $existingHashes = (Get-ChildItem -Recurse -File Releases | ForEach-Object { (Get-FileHash -Algorithm SHA256 $_.FullName).Hash }) }; $savedStatus = 'Already archived in Releases/'; $safeName = $d -replace '[\\/]', '__'; if (($existingHashes -notcontains $hHash) -or ($existingHashes -notcontains $zHash)) { Copy-Item $hex (Join-Path Releases ('archived_' + $safeName + '_' + $tsClean + '_' + $repo + '_merged.hex')); Copy-Item $zip (Join-Path Releases ('archived_' + $safeName + '_' + $tsClean + '_' + $repo + '_dfu.zip')); $savedStatus = 'Archived to Releases/' }; Remove-Item -Recurse -Force $d; Write-Output ('STALE|' + $d + '|' + $timeStr + '|' + $savedStatus) } } } }" 2^>nul') do (
-    if "%%A"=="FRESH" (
-        set /a ELIGIBLE_COUNT+=1
-        set "BUILD_DIR_!ELIGIBLE_COUNT!=%%B"
-        set "BUILD_TIME_!ELIGIBLE_COUNT!=%%C"
-        echo   [FRESH BUILD] Found '%%B\' (Compiled today at %%C)
-    )
-    if "%%A"=="STALE" (
-        set /a STALE_COUNT+=1
-        set "STALE_DIR_!STALE_COUNT!=%%B"
-        set "STALE_TIME_!STALE_COUNT!=%%C"
-        echo   [OUTDATED / ARCHIVING] '%%B\' (Compiled on %%C - not today)
-        echo     -^> %%D
-        echo     -^> Removed outdated build directory '%%B\'.
+for /d %%D in (*) do (
+    set "IS_EXCLUDED=0"
+    if /i "%%D"=="Releases" set "IS_EXCLUDED=1"
+    if /i "%%D"=="src" set "IS_EXCLUDED=1"
+    if /i "%%D"=="boards" set "IS_EXCLUDED=1"
+    if /i "%%D"=="docs" set "IS_EXCLUDED=1"
+    if /i "%%D"=="Key" set "IS_EXCLUDED=1"
+    if /i "%%D"=="modules" set "IS_EXCLUDED=1"
+    if /i "%%D"=="zephyr" set "IS_EXCLUDED=1"
+    if /i "%%D"=="mcuboot" set "IS_EXCLUDED=1"
+    if /i "%%D"=="CMakeFiles" set "IS_EXCLUDED=1"
+    if /i "%%D"==".git" set "IS_EXCLUDED=1"
+    if /i "%%D"==".vscode" set "IS_EXCLUDED=1"
+    if /i "%%D"=="_sysbuild" set "IS_EXCLUDED=1"
+
+    if "!IS_EXCLUDED!"=="0" (
+        if exist "%%D\merged.hex" (
+            if exist "%%D\dfu_application.zip" (
+                set /a ELIGIBLE_COUNT+=1
+                set "BUILD_DIR_!ELIGIBLE_COUNT!=%%D"
+                echo   [ELIGIBLE BUILD] Found '%%D\'
+            )
+        )
     )
 )
 
@@ -160,18 +179,9 @@ echo.
 
 if !ELIGIBLE_COUNT! equ 0 (
     echo ==================================================
-    echo Outdated build directory cleanup complete.
-    echo No fresh firmware builds compiled today were found.
-    echo Today's date: %TODAY_DATE%
+    echo No firmware build directories were found.
     echo ==================================================
-    if !STALE_COUNT! gtr 0 (
-        echo Processed and removed outdated build directories:
-        for /l %%I in (1,1,!STALE_COUNT!) do (
-            echo   - !STALE_DIR_%%I!\ (Built: !STALE_TIME_%%I!)
-        )
-        echo.
-    )
-    echo Please build the firmware (e.g. via 'west build') and re-run this script to release.
+    echo Please build the firmware [e.g. via 'west build'] and re-run this script to release.
     echo Release aborted.
     pause
     exit /b 1
@@ -204,8 +214,8 @@ for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
     set "SAFE_NAME=!RAW_DIR:\=__!"
     set "SAFE_NAME=!SAFE_NAME:/=__!"
 
-    set "TARGET_HEX_NAME=!SAFE_NAME!_v%RELEASE_VER%_%TS%_%REPO_NAME%_merged.hex"
-    set "TARGET_ZIP_NAME=!SAFE_NAME!_v%RELEASE_VER%_%TS%_%REPO_NAME%_dfu.zip"
+    set "TARGET_HEX_NAME=%REPO_NAME%-!SAFE_NAME!-v%RELEASE_VER%-merged-%TS%.hex"
+    set "TARGET_ZIP_NAME=%REPO_NAME%-!SAFE_NAME!-v%RELEASE_VER%-dfu-%TS%.zip"
 
     set "TARGET_HEX_PATH=%RELEASE_BASE%\!TARGET_HEX_NAME!"
     set "TARGET_ZIP_PATH=%RELEASE_BASE%\!TARGET_ZIP_NAME!"
@@ -265,10 +275,10 @@ if errorlevel 1 goto :git_add_failed
 git add .gitignore
 if errorlevel 1 goto :git_add_failed
 
-git add R1-Convert_Release_hex-1.sh
+git add E4A-Version-Upgrade-Tool.sh
 if errorlevel 1 goto :git_add_failed
 
-git add R1-Convert_Release_hex-1.bat
+git add E4A-Version-Upgrade-Tool.bat
 if errorlevel 1 goto :git_add_failed
 
 for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
@@ -297,13 +307,13 @@ for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
     set "GIT_HEX_PATH=!HEX_PATH_%%I:\=/!"
     set "GIT_ZIP_PATH=!ZIP_PATH_%%I:\=/!"
 
-    git diff --cached --name-only | findstr /x /c:"!GIT_HEX_PATH!" >nul
+    git ls-files --error-unmatch "!GIT_HEX_PATH!" >nul 2>&1
     if errorlevel 1 (
         echo ERROR: '!GIT_HEX_PATH!' is not staged.
         pause
         exit /b 1
     )
-    git diff --cached --name-only | findstr /x /c:"!GIT_ZIP_PATH!" >nul
+    git ls-files --error-unmatch "!GIT_ZIP_PATH!" >nul 2>&1
     if errorlevel 1 (
         echo ERROR: '!GIT_ZIP_PATH!' is not staged.
         pause
@@ -341,7 +351,7 @@ if "!TAG_COMMIT!"=="" (
     exit /b 1
 )
 
-git cat-file -e "!TAG_COMMIT!^{commit}" 2>nul
+git cat-file -e "!TAG_COMMIT!" 2>nul
 if errorlevel 1 (
     echo INTEGRITY ERROR: Resolved SHA '!TAG_COMMIT!' for tag '%TAG_NAME%' is not a valid commit object.
     pause
@@ -349,16 +359,16 @@ if errorlevel 1 (
 )
 
 set "GIT_VERSION_FILE=%VERSION_FILE:\=/%"
-git ls-tree -r --name-only "!TAG_COMMIT!" -- "%GIT_VERSION_FILE%" | findstr /x /c:"%GIT_VERSION_FILE%" >nul
+git cat-file -e "!TAG_COMMIT!:%GIT_VERSION_FILE%" 2>nul
 if errorlevel 1 (
-    echo INTEGRITY ERROR: Exact file path '%GIT_VERSION_FILE%' is missing from release tag commit (!TAG_COMMIT!).
+    echo INTEGRITY ERROR: Exact file path '%GIT_VERSION_FILE%' is missing from release tag commit [!TAG_COMMIT!].
     pause
     exit /b 1
 )
 
-git ls-tree -r --name-only "!TAG_COMMIT!" -- "%ROOT_VERSION_FILE%" | findstr /x /c:"%ROOT_VERSION_FILE%" >nul
+git cat-file -e "!TAG_COMMIT!:%ROOT_VERSION_FILE%" 2>nul
 if errorlevel 1 (
-    echo INTEGRITY ERROR: Exact file path '%ROOT_VERSION_FILE%' is missing from release tag commit (!TAG_COMMIT!).
+    echo INTEGRITY ERROR: Exact file path '%ROOT_VERSION_FILE%' is missing from release tag commit [!TAG_COMMIT!].
     pause
     exit /b 1
 )
@@ -367,15 +377,15 @@ for /l %%I in (1,1,!ELIGIBLE_COUNT!) do (
     set "GIT_HEX_PATH=!HEX_PATH_%%I:\=/!"
     set "GIT_ZIP_PATH=!ZIP_PATH_%%I:\=/!"
 
-    git ls-tree -r --name-only "!TAG_COMMIT!" -- "!GIT_HEX_PATH!" | findstr /x /c:"!GIT_HEX_PATH!" >nul
+    git cat-file -e "!TAG_COMMIT!:!GIT_HEX_PATH!" 2>nul
     if errorlevel 1 (
-        echo INTEGRITY ERROR: Exact artifact path '!GIT_HEX_PATH!' is missing from release tag commit (!TAG_COMMIT!).
+        echo INTEGRITY ERROR: Exact artifact path '!GIT_HEX_PATH!' is missing from release tag commit [!TAG_COMMIT!].
         pause
         exit /b 1
     )
-    git ls-tree -r --name-only "!TAG_COMMIT!" -- "!GIT_ZIP_PATH!" | findstr /x /c:"!GIT_ZIP_PATH!" >nul
+    git cat-file -e "!TAG_COMMIT!:!GIT_ZIP_PATH!" 2>nul
     if errorlevel 1 (
-        echo INTEGRITY ERROR: Exact artifact path '!GIT_ZIP_PATH!' is missing from release tag commit (!TAG_COMMIT!).
+        echo INTEGRITY ERROR: Exact artifact path '!GIT_ZIP_PATH!' is missing from release tag commit [!TAG_COMMIT!].
         pause
         exit /b 1
     )
