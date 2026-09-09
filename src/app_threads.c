@@ -3,7 +3,7 @@
 #include <zephyr/device.h>
 #include <stdio.h>
 #include <string.h>
-#include <app_version.h>
+// #include <app_version.h>
 
 #include "app_threads.h"
 #include "spo2_sensor.h"
@@ -145,7 +145,7 @@ void app_post_telemetry(const struct telemetry_msg *msg)
 static void spo2_thread_entry(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
-    printk("SpO2 sampling thread started\n");
+    printk("[SPO2_THREAD] SpO2 sampling thread started\n");
 
     spo2_init();
 
@@ -154,7 +154,7 @@ static void spo2_thread_entry(void *p1, void *p2, void *p3)
             atomic_set(&spo2_sampling_active, 1);
             update_activity_timestamp();
 
-            printk("Executing SpO2 sampling loop...");
+            printk("[SPO2_THREAD] Executing SpO2 sampling loop...\n");
             spo2_start();
 
             atomic_set(&spo2_sampling_active, 0);
@@ -172,14 +172,14 @@ static void spo2_thread_entry(void *p1, void *p2, void *p3)
 static void temp_thread_entry(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
-    printk("Temperature sampling thread started");
+    printk("[TEMP_THREAD] Temperature sampling thread started\n");
 
     temp_init();
 
     while (1) {
         if (atomic_get(&measuring_enabled)) {
             update_activity_timestamp();
-            printk("Executing Temperature sampling loop...");
+            printk("[TEMP_THREAD] Executing Temperature sampling loop...\n");
             temp_start();
         }
 
@@ -195,7 +195,7 @@ static void temp_thread_entry(void *p1, void *p2, void *p3)
 static void nurse_call_thread_entry(void *p1, void *p2, void *p3)
 {
     ARG_UNUSED(p1); ARG_UNUSED(p2); ARG_UNUSED(p3);
-    printk("Nurse Call event thread started (workqueue driven)");
+    printk("[NC_THREAD] Nurse Call event thread started\n");
 
     while (1) {
         k_msleep(1000);
@@ -371,7 +371,7 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
 
 void device_app_init(void)
 {
-    printk("Initializing Nurse Call + SpO2 Application Multithreading");
+    printk("[APP_INIT] Initializing Nurse Call + SpO2 Application Multithreading\n");
 
     /* Read configured sensor scan rates */
     uint32_t spo2_scan_rate = common_config_get_spo2_scan_rate();
@@ -380,9 +380,9 @@ void device_app_init(void)
     bool spo2_enabled = (spo2_scan_rate > 0 && spo2_scan_rate != SENSOR_DISABLED_SCAN_RATE);
     bool temp_enabled = (temp_scan_rate > 0 && temp_scan_rate != SENSOR_DISABLED_SCAN_RATE);
 
-    printk("Application configuration:");
-    printk("  SpO2 scan rate = %u sec (%s)", spo2_scan_rate, spo2_enabled ? "ENABLED" : "DISABLED");
-    printk("  Temp scan rate = %u sec (%s)", temp_scan_rate, temp_enabled ? "ENABLED" : "DISABLED");
+    printk("[APP_INIT] Configuration: SpO2 scan=%u s (%s), Temp scan=%u s (%s)\n",
+           spo2_scan_rate, spo2_enabled ? "ENABLED" : "DISABLED",
+           temp_scan_rate, temp_enabled ? "ENABLED" : "DISABLED");
 
     /* Create SpO2 Thread only when enabled */
     if (spo2_enabled) {
@@ -391,9 +391,9 @@ void device_app_init(void)
                         spo2_thread_entry, NULL, NULL, NULL,
                         SPO2_THREAD_PRIO, 0, K_NO_WAIT);
         k_thread_name_set(&spo2_thread_data, "spo2_thread");
-        printk("SpO2 thread CREATED");
+        printk("[APP_INIT] SpO2 thread CREATED\n");
     } else {
-        printk("SpO2 thread NOT created (disabled by scan_rate=%u)", spo2_scan_rate);
+        printk("[APP_INIT] SpO2 thread NOT created (disabled by scan_rate=%u)\n", spo2_scan_rate);
     }
 
     /* Create Temperature Thread only when enabled */
@@ -403,9 +403,9 @@ void device_app_init(void)
                         temp_thread_entry, NULL, NULL, NULL,
                         TEMP_THREAD_PRIO, 0, K_NO_WAIT);
         k_thread_name_set(&temp_thread_data, "temp_thread");
-        printk("Temperature thread CREATED");
+        printk("[APP_INIT] Temperature thread CREATED\n");
     } else {
-        printk("Temperature thread NOT created (disabled by scan_rate=%u)", temp_scan_rate);
+        printk("[APP_INIT] Temperature thread NOT created (disabled by scan_rate=%u)\n", temp_scan_rate);
     }
 
     /* Create Nurse Call Thread - ALWAYS required */
@@ -414,7 +414,7 @@ void device_app_init(void)
                     nurse_call_thread_entry, NULL, NULL, NULL,
                     NURSE_CALL_THREAD_PRIO, 0, K_NO_WAIT);
     k_thread_name_set(&nurse_call_thread_data, "nurse_call_thread");
-    printk("Nurse Call thread CREATED");
+    printk("[APP_INIT] Nurse Call thread CREATED\n");
 
     /* Create Telemetry TX Thread - ALWAYS required */
     k_thread_create(&telemetry_thread_data, telemetry_stack_area,
@@ -422,9 +422,9 @@ void device_app_init(void)
                     telemetry_tx_thread_entry, NULL, NULL, NULL,
                     TELEMETRY_THREAD_PRIO, 0, K_NO_WAIT);
     k_thread_name_set(&telemetry_thread_data, "telemetry_tx_thread");
-    printk("Telemetry TX thread CREATED");
+    printk("[APP_INIT] Telemetry TX thread CREATED\n");
 
-    printk("Application threads initialization complete");
+    printk("[APP_INIT] Application threads initialization complete\n");
 }
 
 void device_background_process(void)

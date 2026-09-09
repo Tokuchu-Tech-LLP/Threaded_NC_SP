@@ -2,7 +2,9 @@
 #define APP_VERSION_H
 
 #define APP_VERSION_MAJOR 1
-#define APP_VERSION_PATCH 01
-#define APP_VERSION_STR   "1.01"
+#define APP_VERSION_PATCH 1
+#define APP_VERSION_STR   "1.1"
+#define APP_VERSION_STRING "1.1"
 
 #endif /* APP_VERSION_H */
+

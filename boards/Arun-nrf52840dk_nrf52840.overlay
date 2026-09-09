@@ -36,7 +36,7 @@
 		// 	label = "Blue LED 1";
 		// };
 		led4S: led_4 {			// LIGHT_LED
-			gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;  // For Nurse calling default 0.02 Active High Here 1.10
+			gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>;  // For Nurse calling P1.02 Active High
 			label = "LED";
 		};
 		led5S: led_5 {
@@ -58,17 +58,17 @@ buttons {
 	};
 
 	button1: button_1 {
-		gpios = <&gpio1 02 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;  // 3rd Button Nurse call C old 1.13
+		gpios = <&gpio1 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;  // 3rd Button - Cancel (P1.00)
 		label = "Push button switch 1";
 	};
 
 	// button2: button_2 {
-	// 	gpios = <&gpio1 15 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;   // 2nd Button - Nurse call B
+	// 	gpios = <&gpio1 10 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;   // Blue button placeholder
 	// 	label = "Push button switch 2";
 	// };
 
 	button3: button_3 {
-		gpios = <&gpio1 01 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;   // 1st Button - Nurse Call - A old 0.03
+		gpios = <&gpio1 1 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;   // 1st Button - Call (P1.01)
 		label = "Push button switch 3";
 	};
 

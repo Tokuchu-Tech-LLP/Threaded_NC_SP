@@ -486,7 +486,7 @@ if not "!WRITTEN_VER!"=="!NEXT_VER!" (
 
 (
     echo VERSION_MAJOR = %MAJOR%
-    echo VERSION_MINOR = %NEXT_PATCH%
+    echo VERSION_MINOR = !NEXT_INT!
     echo PATCHLEVEL = 0
     echo VERSION_TWEAK = 0
     echo EXTRAVERSION =
