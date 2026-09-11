@@ -206,6 +206,24 @@ void spo2_start(void)
             (int)red_dc, (int)red_ac,
             (int)ir_dc,  (int)ir_ac);
 
+    /* Compute R ratio and Perfusion Index (PI) for diagnostics */
+    float red_ratio = (red_dc > 0.001f) ? (red_ac / red_dc) : 0.0f;
+    float ir_ratio  = (ir_dc > 0.001f) ? (ir_ac / ir_dc) : 0.0001f;
+    float R_diag    = red_ratio / (ir_ratio > 0.0001f ? ir_ratio : 0.0001f);
+    float pi_diag   = (ir_dc > 0.001f) ? ((ir_ac / ir_dc) * 100.0f) : 0.0f;
+
+    /* Always transmit live SpO2 diagnostic metrics over BLE NUS */
+    extern int ble_utils_send(const uint8_t *data, uint16_t len);
+    int32_t r_x10000 = (int32_t)(R_diag * 10000.0f);
+    int32_t pi_x100  = (int32_t)(pi_diag * 100.0f);
+    char diag_buf[140];
+    snprintf(diag_buf, sizeof(diag_buf),
+        "{\"type\":\"diag_spo2\",\"red_dc\":%d,\"red_ac\":%d,\"ir_dc\":%d,\"ir_ac\":%d,\"r_ratio\":%ld.%04ld,\"pi\":%ld.%02ld}\n",
+        (int)red_dc, (int)red_ac, (int)ir_dc, (int)ir_ac,
+        (long)(r_x10000 / 10000), (long)labs(r_x10000 % 10000),
+        (long)(pi_x100 / 100), (long)labs(pi_x100 % 100));
+    ble_utils_send((const uint8_t *)diag_buf, (uint16_t)strlen(diag_buf));
+
     if (red_ac > red_dc * 0.6f) {
         LOG_WRN("Signal unstable (AC too high), skipping");
         return;
@@ -232,9 +250,7 @@ void spo2_start(void)
         return;
     }
 
-    float red_ratio = red_ac / red_dc;
-    float ir_ratio  = ir_ac  / ir_dc;
-    float R = red_ratio / (ir_ratio > 0.0001f ? ir_ratio : 0.0001f);
+    float R = R_diag;
     float SpO2 = 103.54f - 4.605f * R;
 
     int intSpO2 = (int)(SpO2 * 100);
@@ -250,7 +266,7 @@ void spo2_start(void)
         hr = 0;
     }
 
-    int32_t r_x10000 = (int32_t)(R * 10000.0f);
+    r_x10000 = (int32_t)(R * 10000.0f);
     printk("SpO2 calculated: R=%ld.%04ld SpO2=%d HR=%d",
             (long)(r_x10000 / 10000), (long)labs(r_x10000 % 10000), intSpO2, hr);
 

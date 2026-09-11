@@ -18,6 +18,8 @@ LOG_MODULE_REGISTER(app_threads, LOG_LEVEL_INF);
 #define BLE_TYPE_BUT 0x08
 #endif
 
+void send_typed_value_to_mobile(uint8_t type, int16_t value);
+
 /* Message queues for inter-thread telemetry & high-priority alert dispatch */
 K_MSGQ_DEFINE(telemetry_msgq, sizeof(struct telemetry_msg), 16, 4);
 K_MSGQ_DEFINE(alert_msgq, sizeof(struct telemetry_msg), 4, 4);

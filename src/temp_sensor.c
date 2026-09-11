@@ -7,6 +7,7 @@
 #include <zephyr/logging/log.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "common_nvs.h"
 
@@ -88,6 +89,17 @@ void temp_start(void)
         int32_t r_therm_x10  = (int32_t)(r_therm * 10.0f);
         int32_t temp_c_x100  = (int32_t)(temp_c * 100.0f);
         int32_t temp_f_x100  = (int32_t)(temp_f * 100.0f);
+
+        /* Always transmit live Temperature diagnostic metrics over BLE NUS */
+        extern int ble_utils_send(const uint8_t *data, uint16_t len);
+        char diag_buf[140];
+        snprintf(diag_buf, sizeof(diag_buf),
+            "{\"type\":\"diag_temp\",\"adc\":%d,\"r_ohm\":%ld.%01ld,\"temp_c\":%ld.%02ld,\"temp_f\":%ld.%02ld}\n",
+            adc_value,
+            (long)(r_therm_x10 / 10), (long)abs(r_therm_x10 % 10),
+            (long)(temp_c_x100 / 100), (long)abs(temp_c_x100 % 100),
+            (long)(temp_f_x100 / 100), (long)abs(temp_f_x100 % 100));
+        ble_utils_send((const uint8_t *)diag_buf, (uint16_t)strlen(diag_buf));
 
         printk("\n========== TEMP SAMPLE ==========\n");
         printk("ADC Raw      : %d\n", adc_value);
