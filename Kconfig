@@ -18,6 +18,13 @@ module = BLE_UTILS
 module-str = Bluetooth connection utilities
 source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
 
+config APP_NURSE_CALL_ONLY
+    bool "Build as Nurse Call Only (disable SpO2 and Temp)"
+    default n
+    help
+      Sets default SpO2 and Temp scan rates to 9999 so sensor threads
+      are never spawned, operating purely as a standalone Nurse Call device.
+
 config USE_ADC_SENSOR
     bool "Enable ADC Readings"
     default y

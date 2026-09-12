@@ -51,7 +51,7 @@ static atomic_t measuring_enabled = ATOMIC_INIT(1);
 static K_MUTEX_DEFINE(alert_state_mutex);
 static bool pending_alert_active = false;
 static uint8_t pending_alert_id = 0;
-static bool pending_alert_state = false; /* true = ACTIVE, false = CANCELLED */
+static uint8_t pending_alert_state = 0; /* 1 = ACTIVE, 0 = CANCELLED, 2 = BLUE */
 static int64_t pending_alert_timestamp = 0;
 
 extern int ble_utils_send(const uint8_t *data, uint16_t len);
@@ -59,26 +59,27 @@ extern int send_data_to_OTBR(uint8_t *buf, uint8_t ble_type, int16_t ble_value);
 extern void enter_hibernation(void);
 extern void update_activity_timestamp(void);
 extern int64_t last_activity_time;
+void send_typed_value_to_mobile(uint8_t type, int16_t value);
 
-void app_set_pending_alert(uint8_t alert_id, bool is_active, int64_t timestamp)
+void app_set_pending_alert(uint8_t alert_id, uint8_t alert_state, int64_t timestamp)
 {
     k_mutex_lock(&alert_state_mutex, K_FOREVER);
     if (timestamp >= pending_alert_timestamp) {
         pending_alert_active = true;
         pending_alert_id = alert_id;
-        pending_alert_state = is_active;
+        pending_alert_state = alert_state;
         pending_alert_timestamp = timestamp;
     }
     k_mutex_unlock(&alert_state_mutex);
 }
 
-void app_set_pending_alert_on_failure(uint8_t alert_id, bool is_active, int64_t timestamp)
+void app_set_pending_alert_on_failure(uint8_t alert_id, uint8_t alert_state, int64_t timestamp)
 {
     k_mutex_lock(&alert_state_mutex, K_FOREVER);
     if (timestamp >= pending_alert_timestamp) {
         pending_alert_active = true;
         pending_alert_id = alert_id;
-        pending_alert_state = is_active;
+        pending_alert_state = alert_state;
         pending_alert_timestamp = timestamp;
     } else {
         LOG_WRN("Discarded stale failure state (ts %lld < pending ts %lld)",
@@ -87,24 +88,24 @@ void app_set_pending_alert_on_failure(uint8_t alert_id, bool is_active, int64_t 
     k_mutex_unlock(&alert_state_mutex);
 }
 
-bool app_get_pending_alert(uint8_t *out_alert_id, bool *out_is_active, int64_t *out_timestamp)
+bool app_get_pending_alert(uint8_t *out_alert_id, uint8_t *out_alert_state, int64_t *out_timestamp)
 {
     k_mutex_lock(&alert_state_mutex, K_FOREVER);
     bool active = pending_alert_active;
     if (active) {
         if (out_alert_id) *out_alert_id = pending_alert_id;
-        if (out_is_active) *out_is_active = pending_alert_state;
+        if (out_alert_state) *out_alert_state = pending_alert_state;
         if (out_timestamp) *out_timestamp = pending_alert_timestamp;
     }
     k_mutex_unlock(&alert_state_mutex);
     return active;
 }
 
-void app_clear_pending_alert_if_matched(uint8_t alert_id, bool is_active, int64_t timestamp)
+void app_clear_pending_alert_if_matched(uint8_t alert_id, uint8_t alert_state, int64_t timestamp)
 {
     k_mutex_lock(&alert_state_mutex, K_FOREVER);
     if (pending_alert_active && pending_alert_id == alert_id &&
-        pending_alert_state == is_active && timestamp >= pending_alert_timestamp) {
+        pending_alert_state == alert_state && timestamp >= pending_alert_timestamp) {
         pending_alert_active = false;
     }
     k_mutex_unlock(&alert_state_mutex);
@@ -122,10 +123,12 @@ void app_set_measuring_enabled(bool enable)
 
 void app_post_telemetry(const struct telemetry_msg *msg)
 {
-    if (msg->type == MSG_TYPE_NURSE_CALL_ALERT || msg->type == MSG_TYPE_NURSE_CALL_CANCEL) {
-        bool is_active = (msg->type == MSG_TYPE_NURSE_CALL_ALERT);
+    if (msg->type == MSG_TYPE_NURSE_CALL_ALERT ||
+        msg->type == MSG_TYPE_NURSE_CALL_CANCEL ||
+        msg->type == MSG_TYPE_NURSE_CALL_BLUE) {
+        uint8_t alert_state = msg->data.alert.alert_state;
         int64_t ts = msg->timestamp > 0 ? msg->timestamp : k_uptime_get();
-        app_set_pending_alert(msg->data.alert.alert_id, is_active, ts);
+        app_set_pending_alert(msg->data.alert.alert_id, alert_state, ts);
 
         int ret = k_msgq_put(&alert_msgq, msg, K_MSEC(200));
         if (ret != 0) {
@@ -150,7 +153,10 @@ static void spo2_thread_entry(void *p1, void *p2, void *p3)
     spo2_init();
 
     while (1) {
-        if (atomic_get(&measuring_enabled)) {
+        uint32_t raw_scan = common_config_get_spo2_scan_rate();
+        bool enabled = (atomic_get(&measuring_enabled) != 0) && (raw_scan < 9999);
+
+        if (enabled) {
             atomic_set(&spo2_sampling_active, 1);
             update_activity_timestamp();
 
@@ -158,11 +164,13 @@ static void spo2_thread_entry(void *p1, void *p2, void *p3)
             spo2_start();
 
             atomic_set(&spo2_sampling_active, 0);
-        }
 
-        uint32_t raw_scan = common_config_get_spo2_scan_rate();
-        uint32_t scan_rate = raw_scan > 0 ? raw_scan : 60;
-        k_sleep(K_SECONDS(scan_rate));
+            uint32_t scan_rate = raw_scan > 0 ? raw_scan : 60;
+            k_sleep(K_SECONDS(scan_rate));
+        } else {
+            /* Sensor disabled: sleep without running sampling or resetting activity timestamp */
+            k_sleep(K_SECONDS(5));
+        }
     }
 }
 
@@ -177,15 +185,20 @@ static void temp_thread_entry(void *p1, void *p2, void *p3)
     temp_init();
 
     while (1) {
-        if (atomic_get(&measuring_enabled)) {
+        uint32_t raw_scan = common_config_get_body_temp_scan_rate();
+        bool enabled = (atomic_get(&measuring_enabled) != 0) && (raw_scan < 9999);
+
+        if (enabled) {
             update_activity_timestamp();
             printk("[TEMP_THREAD] Executing Temperature sampling loop...\n");
             temp_start();
-        }
 
-        uint32_t raw_scan = common_config_get_body_temp_scan_rate();
-        uint32_t scan_rate = raw_scan > 0 ? raw_scan : 90;
-        k_sleep(K_SECONDS(scan_rate));
+            uint32_t scan_rate = raw_scan > 0 ? raw_scan : 90;
+            k_sleep(K_SECONDS(scan_rate));
+        } else {
+            /* Sensor disabled: sleep without running sampling or resetting activity timestamp */
+            k_sleep(K_SECONDS(5));
+        }
     }
 }
 
@@ -261,6 +274,12 @@ static int process_telemetry_msg(const struct telemetry_msg *msg)
         rc = 0;
         break;
 
+    case MSG_TYPE_NURSE_CALL_BLUE:
+        LOG_INF("TX Nurse Call Blue via common_nurse_call_blue_send");
+        common_nurse_call_blue_send(msg->data.alert.alert_id);
+        rc = 0;
+        break;
+
     default:
         LOG_ERR("Unhandled telemetry message type: %d", msg->type);
         rc = -EINVAL;
@@ -270,11 +289,11 @@ static int process_telemetry_msg(const struct telemetry_msg *msg)
     return rc;
 }
 
-void app_notify_alert_ack_received(uint8_t alert_id, bool is_active, int64_t timestamp)
+void app_notify_alert_ack_received(uint8_t alert_id, uint8_t alert_state, int64_t timestamp)
 {
-    printk("End-to-End CoAP ACK received for alert_id %d (active=%d, ts=%lld) — evaluating match",
-            alert_id, is_active, (long long)timestamp);
-    app_clear_pending_alert_if_matched(alert_id, is_active, timestamp);
+    printk("End-to-End CoAP ACK received for alert_id %d (state=%d, ts=%lld) — evaluating match",
+            alert_id, alert_state, (long long)timestamp);
+    app_clear_pending_alert_if_matched(alert_id, alert_state, timestamp);
 }
 
 void app_notify_alert_ack_failed(void)
@@ -302,12 +321,12 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
             int rc = process_telemetry_msg(&alert_msg);
             alert_processed = true;
 
-            bool is_active = (alert_msg.type == MSG_TYPE_NURSE_CALL_ALERT);
+            uint8_t state = alert_msg.data.alert.alert_state;
             if (rc == 0) {
-                app_clear_pending_alert_if_matched(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
+                app_clear_pending_alert_if_matched(alert_msg.data.alert.alert_id, state, alert_msg.timestamp);
                 retry_backoff_ms = 200;
             } else {
-                app_set_pending_alert_on_failure(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
+                app_set_pending_alert_on_failure(alert_msg.data.alert.alert_id, state, alert_msg.timestamp);
                 LOG_ERR("Alert dispatch failed (err %d) — backing off %u ms", rc, retry_backoff_ms);
                 k_msleep(retry_backoff_ms);
                 retry_backoff_ms = MIN(retry_backoff_ms * 2, 3200);
@@ -316,22 +335,30 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
 
         /* 2. If alert queue was empty or failed previously, retry pending alert state */
         uint8_t pending_id;
-        bool pending_is_active;
+        uint8_t pending_state;
         int64_t pending_ts;
-        if (app_get_pending_alert(&pending_id, &pending_is_active, &pending_ts)) {
+        if (app_get_pending_alert(&pending_id, &pending_state, &pending_ts)) {
+            enum telemetry_msg_type retry_type;
+            if (pending_state == 1) {
+                retry_type = MSG_TYPE_NURSE_CALL_ALERT;
+            } else if (pending_state == 2) {
+                retry_type = MSG_TYPE_NURSE_CALL_BLUE;
+            } else {
+                retry_type = MSG_TYPE_NURSE_CALL_CANCEL;
+            }
             struct telemetry_msg retry_msg = {
-                .type = pending_is_active ? MSG_TYPE_NURSE_CALL_ALERT : MSG_TYPE_NURSE_CALL_CANCEL,
+                .type = retry_type,
                 .timestamp = pending_ts
             };
             retry_msg.data.alert.alert_id = pending_id;
-            retry_msg.data.alert.alert_state = pending_is_active ? 1 : 0;
+            retry_msg.data.alert.alert_state = pending_state;
 
             update_activity_timestamp();
             int rc = process_telemetry_msg(&retry_msg);
             alert_processed = true;
 
             if (rc == 0) {
-                app_clear_pending_alert_if_matched(pending_id, pending_is_active, pending_ts);
+                app_clear_pending_alert_if_matched(pending_id, pending_state, pending_ts);
                 retry_backoff_ms = 200;
             } else {
                 LOG_ERR("Alert retry dispatch failed (err %d) — backing off %u ms", rc, retry_backoff_ms);
@@ -350,12 +377,12 @@ static void telemetry_tx_thread_entry(void *p1, void *p2, void *p3)
             while (k_msgq_get(&alert_msgq, &alert_msg, K_NO_WAIT) == 0) {
                 update_activity_timestamp();
                 int rc = process_telemetry_msg(&alert_msg);
-                bool is_active = (alert_msg.type == MSG_TYPE_NURSE_CALL_ALERT);
+                uint8_t state = alert_msg.data.alert.alert_state;
                 if (rc == 0) {
-                    app_clear_pending_alert_if_matched(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
+                    app_clear_pending_alert_if_matched(alert_msg.data.alert.alert_id, state, alert_msg.timestamp);
                     retry_backoff_ms = 200;
                 } else {
-                    app_set_pending_alert_on_failure(alert_msg.data.alert.alert_id, is_active, alert_msg.timestamp);
+                    app_set_pending_alert_on_failure(alert_msg.data.alert.alert_id, state, alert_msg.timestamp);
                 }
             }
             update_activity_timestamp();
@@ -429,11 +456,28 @@ void device_app_init(void)
 
 void device_background_process(void)
 {
-    /* Power management: Check idle timeout for hibernation */
-    if (!atomic_get(&measuring_enabled) && !is_spo2_sampling_active() && !is_nurse_call_active()) {
+    /* Power management: Hibernation is strictly active ONLY on Battery Mode (1) */
+    if (common_config_get_battery_mode() != 1) {
+        update_activity_timestamp();
+        return;
+    }
+
+    /* Check whether sensors are enabled / actively scanning:
+     * Sensors are considered measuring only if measuring_enabled is true
+     * AND their scan rate is not set to disabled (>= 9999).
+     */
+    bool is_spo2_measuring = (atomic_get(&measuring_enabled) != 0) &&
+                             (common_config_get_spo2_scan_rate() < 9999);
+    bool is_temp_measuring = (atomic_get(&measuring_enabled) != 0) &&
+                             (common_config_get_body_temp_scan_rate() < 9999);
+
+    /* Check idle timeout for hibernation when sensors are disabled and no alerts active */
+    if (!is_spo2_measuring && !is_temp_measuring &&
+        !is_spo2_sampling_active() && !is_nurse_call_active()) {
         uint32_t idle_s = common_config_get_idle_time_hibernate();
         if (k_uptime_get() - last_activity_time > (int64_t)idle_s * 1000) {
-            printk("Inactivity timeout reached, powering down to System OFF...");
+            printk("[APP] Inactivity timeout reached on Battery Mode (%u s), powering down to System OFF...\n",
+                   (unsigned int)idle_s);
             enter_hibernation();
         }
     } else {

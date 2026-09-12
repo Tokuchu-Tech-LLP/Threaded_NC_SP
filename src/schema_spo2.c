@@ -6,8 +6,13 @@ struct spo2_config spo2_candidate_cfg;
 static const struct spo2_config spo2_defaults = {
     .sensor_no = 1,
     .version = "1.0",
-    .spo2_scan_rate_s = 60,
-    .body_temp_scan_rate_s = 90,
+#if defined(CONFIG_APP_NURSE_CALL_ONLY)
+    .spo2_scan_rate_s = 9999,        /* 9999 = Disabled */
+    .body_temp_scan_rate_s = 9999,   /* 9999 = Disabled */
+#else
+    .spo2_scan_rate_s = 60,          /* Normal SpO2 scan (seconds) */
+    .body_temp_scan_rate_s = 90,     /* Normal Temp scan (seconds) */
+#endif
     .no_finger_threshold = 1000
 };
 

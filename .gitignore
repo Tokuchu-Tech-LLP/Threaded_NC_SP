@@ -1,6 +1,7 @@
 # Ignore full NC_Basic and NC_Log folders
 SPNC_FOTA/
 SPNC_Debug
+NC_FOTA/
 
 # Allow releases and release hex/zip artifacts
 !Releases/

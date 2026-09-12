@@ -10,6 +10,7 @@ enum telemetry_msg_type {
     MSG_TYPE_TEMP,
     MSG_TYPE_NURSE_CALL_ALERT,
     MSG_TYPE_NURSE_CALL_CANCEL,
+    MSG_TYPE_NURSE_CALL_BLUE,
     MSG_TYPE_HEARTBEAT
 };
 
@@ -25,7 +26,7 @@ struct telemetry_msg {
         } temp;
         struct {
             uint8_t alert_id;
-            uint8_t alert_state; /* 1 = active, 0 = cancelled */
+            uint8_t alert_state; /* 1 = active, 0 = cancelled, 2 = blue */
         } alert;
     } data;
     int64_t timestamp;
@@ -40,7 +41,9 @@ void app_post_telemetry(const struct telemetry_msg *msg);
 bool is_spo2_sampling_active(void);
 bool is_nurse_call_active(void);
 
-void app_notify_alert_ack_received(uint8_t alert_id, bool is_active, int64_t timestamp);
+void send_typed_value_to_mobile(uint8_t type, int16_t value);
+
+void app_notify_alert_ack_received(uint8_t alert_id, uint8_t alert_state, int64_t timestamp);
 void app_notify_alert_ack_failed(void);
 
 #endif /* APP_THREADS_H */
