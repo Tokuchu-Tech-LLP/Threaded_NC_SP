@@ -48,7 +48,7 @@ static struct k_thread telemetry_thread_data;
 static atomic_t spo2_sampling_active = ATOMIC_INIT(0);
 static atomic_t measuring_enabled = ATOMIC_INIT(1);
 
-static K_MUTEX_DEFINE(alert_state_mutex);
+K_MUTEX_DEFINE(alert_state_mutex);
 static bool pending_alert_active = false;
 static uint8_t pending_alert_id = 0;
 static uint8_t pending_alert_state = 0; /* 1 = ACTIVE, 0 = CANCELLED, 2 = BLUE */
